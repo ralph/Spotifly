@@ -305,15 +305,12 @@ nonisolated struct SpclientAPI: Sendable {
         if let id = SpotifyAPI.parseTrackURI(trimmed) {
             return ["spotify:track:\(id)"]
         }
-        return try await resolveContext(trimmed, deviceId: deviceId, pageLimit: Self.pagesUpFront(of: trimmed)).tracks
+        return try await resolveContext(trimmed, deviceId: deviceId).tracks
     }
 
-    /// How many of a context's pages are fetched before it is queued: one of a station's,
-    /// which names pages without end. Any other context comes whole, as a 150-track playlist
-    /// did in one page.
-    static func pagesUpFront(of uri: String) -> Int {
-        uri.hasPrefix("spotify:station:") ? 1 : 10
-    }
+    /// How many of a context's pages are fetched at most. An album or a playlist comes whole
+    /// well within it: a 150-track playlist came in one page.
+    private static let pageLimit = 10
 
     /// An ordered track list resolved from a context uri.
     struct ResolvedContext: Sendable {
@@ -322,18 +319,17 @@ nonisolated struct SpclientAPI: Sendable {
         var nextPageUrl: String?
     }
 
-    /// Resolves an album, playlist, artist, or station uri into its tracks, via spclient's
-    /// context resolver — the same source Spotify's own clients use, and one that handles every
-    /// context shape uniformly.
+    /// Resolves an album or playlist uri into its tracks, via spclient's context resolver — the
+    /// same source Spotify's own clients use, and one that handles every context shape uniformly.
     ///
     /// Its next pages are followed, up to `pageLimit` pages in all, and the page after them named
     /// as `nextPageUrl`. A later page that fails leaves the pages before it; only the first
     /// failing fails the resolve.
-    func resolveContext(_ contextUri: String, deviceId: String, pageLimit: Int = 10) async throws -> ResolvedContext {
+    func resolveContext(_ contextUri: String, deviceId: String) async throws -> ResolvedContext {
         let encodedUri = contextUri.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? contextUri
 
         var context = try await contextPage("/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)")
-        for _ in 1 ..< max(1, pageLimit) {
+        for _ in 1 ..< Self.pageLimit {
             guard let next = context.nextPageUrl else { break }
             do {
                 let page = try await contextPage(Self.nextPagePath(next))
@@ -371,34 +367,12 @@ nonisolated struct SpclientAPI: Sendable {
     }
 
     /// Where a context's next page is asked for. An `hm://` url names a path of spclient's own,
-    /// as librespot's `get_next_page` and go-librespot's `hmRequestUrl` read it: a station's next
-    /// page, `hm://radio-apollo/v3/tracks/spotify:station:…`, asked of the resolver, was answered
-    /// 404, and failed the whole resolve (2026-10-02). Anything else goes through the resolver.
-    ///
-    /// A station's third page and on are named at `radio-router`, which spclient answers 404; the
-    /// same request at `radio-apollo`, where its second is named, answers the next 50 tracks
-    /// (2026-10-02). Its `prev_tracks` carry the station on: without them it starts over. They
-    /// are cut to `stationPageMemory`.
+    /// as librespot's `get_next_page` and go-librespot's `hmRequestUrl` read it: asked of the
+    /// resolver, one was answered 404, and failed the whole resolve (2026-10-02). Anything else
+    /// goes through the resolver.
     static func nextPagePath(_ url: String) -> String {
         guard url.hasPrefix("hm://") else { return "/context-resolve/v1/\(url)" }
-        let path = "/" + url.dropFirst("hm://".count)
-        let router = "/radio-router/"
-        return keepingRecentTracks(path.hasPrefix(router) ? "/radio-apollo/" + path.dropFirst(router.count) : path)
-    }
-
-    /// How many of the tracks a station played its next page names. A page's url names every
-    /// track played before it in `prev_tracks`, the latest page's first, 50 more with each page;
-    /// the eleventh page's, 500 tracks and 11,657 characters long, was refused with 431, which
-    /// ended the station 500 tracks in (2026-10-02). Those played last are kept, as the ones it
-    /// should not play again soon.
-    static let stationPageMemory = 350
-
-    /// `path` with its `prev_tracks` cut to the first `stationPageMemory`.
-    private static func keepingRecentTracks(_ path: String) -> String {
-        guard let start = path.range(of: "prev_tracks=")?.upperBound else { return path }
-        let end = path[start...].firstIndex(of: "&") ?? path.endIndex
-        let tracks = path[start ..< end].split(separator: ",")
-        return path.replacingCharacters(in: start ..< end, with: tracks.prefix(stationPageMemory).joined(separator: ","))
+        return "/" + url.dropFirst("hm://".count)
     }
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept` header the endpoint

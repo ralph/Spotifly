@@ -102,8 +102,8 @@ struct SpclientContextTests {
         #expect(sent.values.count == 1)
     }
 
-    /// A station's next page was named as an `hm://` url, which the resolver answered 404, failing
-    /// the whole resolve (2026-10-02).
+    /// A next page named as an `hm://` url, asked of the resolver, was answered 404, failing the
+    /// whole resolve (2026-10-02).
     @Test func `a context's next page at an hm url is asked of spclient at its path`() async throws {
         let sent = Recorder<URLRequest>()
         let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a","uid":"u1"}],"next_page_url":"hm://some-service/v1/page?count=1"}]}"#.utf8)
@@ -121,46 +121,6 @@ struct SpclientContextTests {
         #expect(sent.values.last?.url?.path == "/some-service/v1/page")
         #expect(sent.values.last?.url?.query == "count=1")
         #expect(SpclientAPI.nextPagePath("spotify:album:x?page=2") == "/context-resolve/v1/spotify:album:x?page=2")
-    }
-
-    /// A station is queued from its first page: it names pages without end. From its third page
-    /// on, its pages are named at `radio-router`, which spclient answers 404, and asked at
-    /// `radio-apollo`, which answers them (2026-10-02).
-    @Test func `a station is resolved a page at a time, its next page asked of the radio service`() async throws {
-        let sent = Recorder<URLRequest>()
-        let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a"}],"next_page_url":"hm://radio-router/v3/tracks/spotify:station:track:x?count=50&prev_tracks=a"}]}"#.utf8)
-        let credentials = spotifyCredentials(transport: { request in
-            sent.record(request)
-            return (first, httpResponse(200, url: request.url!))
-        })
-        let client = SpclientAPI(credentials: credentials)
-        #expect(SpclientAPI.pagesUpFront(of: "spotify:station:track:x") == 1)
-        #expect(SpclientAPI.pagesUpFront(of: "spotify:playlist:x") == 10)
-
-        let station = try await client.resolveContext("spotify:station:track:x", deviceId: "device", pageLimit: 1)
-        #expect(station.tracks == ["spotify:track:a"])
-        #expect(sent.values.count == 1)
-
-        let next = try SpclientAPI.nextPagePath(#require(station.nextPageUrl))
-        #expect(next == "/radio-apollo/v3/tracks/spotify:station:track:x?count=50&prev_tracks=a")
-    }
-
-    /// The latest page's tracks come first in `prev_tracks`, and the url was refused with 431 at
-    /// 500 of them (2026-10-02), so the oldest are left out.
-    @Test func `a station page names only the tracks played last`() {
-        let played = (0 ..< 400).map { "t\($0)" }
-        let url = "hm://radio-router/v3/tracks/spotify:station:track:x?salt=1&prev_tracks=\(played.joined(separator: ","))&count=50"
-        let path = SpclientAPI.nextPagePath(url)
-        let named = path.components(separatedBy: "prev_tracks=")[1].components(separatedBy: "&")[0].split(separator: ",")
-
-        #expect(named.count == SpclientAPI.stationPageMemory)
-        #expect(named.first == "t0")
-        #expect(named.last == "t\(SpclientAPI.stationPageMemory - 1)")
-        #expect(path.hasPrefix("/radio-apollo/v3/tracks/spotify:station:track:x?salt=1&prev_tracks=t0,"))
-        #expect(path.hasSuffix("&count=50"))
-
-        let short = "hm://radio-apollo/v3/tracks/spotify:station:track:x?prev_tracks=a,b"
-        #expect(SpclientAPI.nextPagePath(short) == "/radio-apollo/v3/tracks/spotify:station:track:x?prev_tracks=a,b")
     }
 
     /// A track queues as itself, a link as its uri, and neither asks the resolver.
