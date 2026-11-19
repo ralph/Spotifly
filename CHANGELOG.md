@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-19
+
 ### Added
 - **Spotify Soloist can be this Mac's player.** Settings → Playback takes a key from Spotify's Soloist dashboard, downloads Soloist from Spotify's CDN, and starts it; picking "Spotifly" once in the Spotify app on a phone pairs it. Soloist plays with Spotify's own engine, so the audio keys the built-in player is refused for some accounts (#223) are not needed. Spotifly runs it as a child process with a private data folder, checks that the download is signed by Spotify before every start, renews it in the last 30 of its 90 days, restarts it if it stops, and stops it on quit (`SoloistEngine`, `SoloistInstaller`). Every play, from a row, a list or song radio (as the track's station), goes to Soloist over connect-state, and pause, skips, seek, volume and the queue go there as they go to any other Connect device; what it plays comes back in the cluster. Spotifly's own Connect device then registers hidden, as it does for an account that cannot stream, and hidden devices are left out of Speakers, so the account lists one "Spotifly", which Speakers calls This Mac. Soloist plays to the Mac's sound output. Plan: `plans/done/soloist-playback.md`.
 - **The mouse's back and forward buttons step through the history, as in Safari.** Its fourth and fifth buttons go back and forward in the window they are pressed in, as the toolbar's arrows and ⌘[ and ⌘] do. AppKit hands them to the view under the pointer, which ignores them, and SwiftUI has no gesture for them, so each window reads them with a local event monitor before any view does (`MouseNavigationButtons`).
