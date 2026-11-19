@@ -168,13 +168,13 @@ public actor SpircController {
     }
 
     /// A PutState for this device, never active: it plays nothing.
-    private func buildPutStateRequest() -> PutStateRequestProto {
+    func buildPutStateRequest(at date: Date = Date()) -> PutStateRequestProto {
         var request = PutStateRequestProto()
         request.device = buildDevice()
         request.memberType = .connectState
         request.isActive = false
         request.putStateReason = .spircHello
-        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
+        request.clientSideTimestamp = UInt64(date.timeIntervalSince1970 * 1000)
         return request
     }
 
