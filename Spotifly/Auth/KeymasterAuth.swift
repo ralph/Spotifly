@@ -27,7 +27,7 @@ nonisolated struct KeymasterTokens: Sendable, Equatable, Codable {
 
     /// Refresh once the access token has this many seconds or less of validity left.
     ///
-    /// One grant now, so one policy: the launch path, the API clients and the accesspoint
+    /// One grant now, so one policy: the launch path, the API clients and the Connect
     /// session all refresh on this. It used to live on the Web API's `SpotifyAuthResult` and be
     /// borrowed from here, which was the shared constant keeping two halves from drifting
     /// apart; there is only one half left.
@@ -74,7 +74,7 @@ nonisolated enum KeymasterAuthError: Error, LocalizedError, Equatable {
     }
 }
 
-/// The grant that authorizes everything: the accesspoint session, pathfinder GraphQL and
+/// The grant that authorizes everything: the Connect session, pathfinder GraphQL and
 /// spclient REST all run on the token this mints.
 ///
 /// It is a plain PKCE flow — no DPoP proof, no client token on the exchange. Both were tested
@@ -256,19 +256,16 @@ nonisolated enum KeymasterAuth {
         now: Date = Date(),
     ) throws -> KeymasterTokens {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let accessToken = json["access_token"] as? String
+              let accessToken = json["access_token"] as? String,
+              let refreshToken = json["refresh_token"] as? String ?? fallbackRefreshToken
         else {
-            throw KeymasterAuthError.malformedTokenResponse
-        }
-
-        guard let refreshToken = json["refresh_token"] as? String ?? fallbackRefreshToken else {
             throw KeymasterAuthError.malformedTokenResponse
         }
 
         let expiresIn = json["expires_in"] as? Double ?? 3600
 
-        // The accesspoint needs the username and only this response carries it, so a refresh
-        // that omits it must not blank the stored one.
+        // A later grant is checked against the username (`KeymasterSession.adopt`) and only
+        // this response carries it, so a refresh that omits it must not blank the stored one.
         let username = json["username"] as? String ?? ""
 
         return KeymasterTokens(
@@ -315,9 +312,9 @@ nonisolated enum KeymasterAuth {
 
     private static func openInBrowser(_ url: URL) -> Bool {
         #if canImport(AppKit)
-            return NSWorkspace.shared.open(url)
+            NSWorkspace.shared.open(url)
         #else
-            return false
+            false
         #endif
     }
 }

@@ -10,11 +10,11 @@ import Foundation
 
 /// The live keymaster grant: one access token, kept valid, shared by everything that needs it.
 ///
-/// An actor because the token is read from several places at once — the accesspoint session,
+/// An actor because the token is read from several places at once — the Connect session,
 /// pathfinder and spclient — and a refresh must happen once rather than once per caller.
 /// Concurrent callers arriving during a refresh await the same one.
 actor KeymasterSession {
-    /// The app's grant. One instance, because one grant is what the app has: the accesspoint
+    /// The app's grant. One instance, because one grant is what the app has: the Connect
     /// session and both API clients read the same token, and a second instance would refresh
     /// against a rotating token the first has already spent.
     static let shared = KeymasterSession()

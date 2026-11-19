@@ -194,7 +194,7 @@ public actor SpircController {
     /// field; `PutStateRequest.is_active` is where the cluster reads it.
     func buildDevice() -> ConnectDevice {
         var deviceInfoProto = ConnectDeviceInfo()
-        deviceInfoProto.canPlay = deviceInfo.supportsPlayback
+        deviceInfoProto.canPlay = false
         deviceInfoProto.name = deviceInfo.deviceName
         deviceInfoProto.deviceId = deviceInfo.deviceId
         deviceInfoProto.deviceType = .computer
@@ -204,11 +204,11 @@ public actor SpircController {
         deviceInfoProto.model = deviceInfo.modelName
 
         var caps = ConnectCapabilities()
-        caps.canBePlayer = deviceInfo.supportsPlayback
-        // A device that cannot play registers as the web player does then: hidden, so no
-        // device lists it as a speaker. The cluster still answers it and is pushed to it,
-        // which is where the device list and the playback shown here come from.
-        caps.hidden = !deviceInfo.supportsPlayback
+        // It plays nothing, so it registers as the web player does when it cannot play:
+        // hidden, so no device lists it as a speaker. The cluster still answers it and is
+        // pushed to it, which is where the device list and the playback shown here come from.
+        caps.canBePlayer = false
+        caps.hidden = true
         caps.isObservable = true
         caps.volumeSteps = 64
         caps.supportedTypes = ["audio/track", "audio/episode"]

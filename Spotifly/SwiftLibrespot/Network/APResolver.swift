@@ -2,14 +2,13 @@
 //  APResolver.swift
 //  SwiftLibrespot
 //
-//  Resolves Spotify accesspoint and dealer endpoints
+//  Resolves Spotify's dealer and spclient endpoints
 //
 
 import Foundation
 
 /// Resolved endpoints from apresolve.spotify.com
 public struct ResolvedEndpoints: Sendable {
-    public let accesspoints: [String]
     public let dealers: [String]
     public let spclients: [String]
 }
@@ -18,9 +17,10 @@ public struct ResolvedEndpoints: Sendable {
 public struct APResolver: Sendable {
     public nonisolated init() {}
 
-    /// Resolve all endpoint types
+    /// Resolves the two the session uses: the dealer and spclient. Not the accesspoint, which
+    /// only the built-in player needed.
     public func resolve() async throws -> ResolvedEndpoints {
-        let urlString = "https://apresolve.spotify.com?type=accesspoint&type=dealer&type=spclient"
+        let urlString = "https://apresolve.spotify.com?type=dealer&type=spclient"
         debugLog("APResolver", "[GET] \(urlString)")
 
         let url = URL(string: urlString)!
@@ -36,14 +36,12 @@ public struct APResolver: Sendable {
             throw LibrespotError.connectionFailed("Invalid AP resolve response")
         }
 
-        let accesspoints = json["accesspoint"] as? [String] ?? []
         let dealers = json["dealer"] as? [String] ?? []
         let spclients = json["spclient"] as? [String] ?? []
 
-        debugLog("APResolver", "Resolved: \(accesspoints.count) APs, \(dealers.count) dealers, \(spclients.count) spclients")
+        debugLog("APResolver", "Resolved: \(dealers.count) dealers, \(spclients.count) spclients")
 
         return ResolvedEndpoints(
-            accesspoints: accesspoints,
             dealers: dealers,
             spclients: spclients,
         )

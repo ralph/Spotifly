@@ -25,21 +25,13 @@ public actor LibrespotClient {
     // MARK: - Dependencies
 
     private let deviceInfo: DeviceInfo
-    private let storedCredentials = StoredCredentialsStore()
 
     private var session: LibrespotSession?
     private var spclient: SPClient?
 
-    /// What the HTTP requests carry (dealer, spclient), the bearer for a token
-    /// login among it. Injected by the facade, which binds it to the app's
-    /// keymaster grant.
+    /// What the HTTP requests carry (dealer, spclient). Injected by the facade, which binds it
+    /// to the app's keymaster grant.
     private var httpCredentials: SpotifyCredentials?
-
-    /// The account the session plays as.
-    private var usernameProvider: (@Sendable () async -> String?)?
-
-    /// Whether this Mac may play for the account, as the last login found.
-    private var streams = true
 
     /// Consumes the current session's events; cancelled when it is torn down.
     private var sessionEvents: Task<Void, Never>?
@@ -84,14 +76,11 @@ public actor LibrespotClient {
     // MARK: - Lifecycle
 
     /// Builds the session: the dealer socket and the Spirc registration. Spotify's Soloist
-    /// plays for this Mac, so the device registers hidden, as one that cannot play does, and
-    /// the session needs no accesspoint (`LibrespotSession.connect`).
-    func initialize(
-        httpCredentials: SpotifyCredentials,
-        usernameProvider: @escaping @Sendable () async -> String?,
-    ) async throws {
+    /// plays for this Mac, so the device registers hidden, as one that cannot play does
+    /// (`SpircController.buildDevice`), and the session needs only the token
+    /// (`LibrespotSession.connect`).
+    func initialize(httpCredentials: SpotifyCredentials) async throws {
         self.httpCredentials = httpCredentials
-        self.usernameProvider = usernameProvider
         shuttingDown = false
         let generation = lifecycleGeneration
 
@@ -100,30 +89,15 @@ public actor LibrespotClient {
 
         await teardown()
 
-        let credentials = try await credentialsForLogin()
-
         if lifecycleGeneration != generation {
             throw LibrespotError.invalidState("Initialization superseded")
         }
 
-        var registered = deviceInfo
-        registered.supportsPlayback = false
-        let newSession = LibrespotSession(deviceInfo: registered)
+        let newSession = LibrespotSession(deviceInfo: deviceInfo)
         session = newSession
         subscribeToSession(newSession)
 
-        do {
-            try await newSession.connect(credentials: credentials, signing: httpCredentials)
-        } catch LibrespotError.premiumRequired {
-            // A logout that landed meanwhile has moved on to the next account, which this
-            // must not be said of.
-            guard lifecycleGeneration == generation else {
-                throw LibrespotError.invalidState("Initialization superseded")
-            }
-            streams = false
-            publishConnectionState(connected: false)
-            throw LibrespotError.premiumRequired
-        }
+        try await newSession.connect(signing: httpCredentials)
 
         // A logout or shutdown landed while we were connecting; everything
         // below would sign a signed-out account back in. Abandon instead.
@@ -143,23 +117,6 @@ public actor LibrespotClient {
         publishConnectionState(connected: true)
 
         debugLog("LibrespotClient", "Initialization complete")
-    }
-
-    /// Chooses what to log in with: the stored reusable login if present,
-    /// otherwise a fresh token plus username.
-    private func credentialsForLogin() async throws -> APCredentials {
-        if let stored = storedCredentials.load() {
-            return .stored(username: stored.username, authData: stored.authData)
-        }
-
-        guard let httpCredentials else {
-            throw LibrespotError.notInitialized
-        }
-        let token = try await httpCredentials.accessToken()
-        guard let username = await usernameProvider?(), !username.isEmpty else {
-            throw LibrespotError.authenticationFailed("No account name available for streaming login")
-        }
-        return .accessToken(token, username: username)
     }
 
     /// Leaves Spotify Connect and tears everything down. Blocks auto-reconnect until
@@ -199,7 +156,6 @@ public actor LibrespotClient {
         await session?.disconnect()
         session = nil
         spclient = nil
-        streams = true
 
         flags.withLock {
             $0.hasSession = false
@@ -228,20 +184,20 @@ public actor LibrespotClient {
         case noSession
     }
 
+    /// Reconnects the session it has, for an account still signed in: a logout forgets the
+    /// session's credentials (`clearStreamingCredentials`), so a signed-out account is never
+    /// reconnected.
     private func runRecovery() async {
         defer { flags.withLock { $0.recovering = false } }
-        guard !shuttingDown, let session, let credentials = await session.currentCredentials, let httpCredentials else { return }
+        guard !shuttingDown, let session, let credentials = await session.currentCredentials else { return }
 
         do {
-            try await session.connect(credentials: credentials, signing: httpCredentials)
+            try await session.connect(signing: credentials)
             await attachTransport()
             publishConnectionState(connected: true)
             debugLog("LibrespotClient", "Recovery succeeded")
         } catch {
             debugLog("LibrespotClient", "Recovery failed: \(error)")
-            if case .premiumRequired? = error as? LibrespotError {
-                streams = false
-            }
             publishConnectionState(connected: false, error: error.localizedDescription)
         }
     }
@@ -257,15 +213,15 @@ public actor LibrespotClient {
                 deviceId: deviceInfo.deviceId,
             )
         }
-
-        streams = await session.streams
     }
 
     // MARK: - Credential Management
 
-    /// Removes the stored reusable login so nothing can sign back in.
+    /// Forgets the account's credentials, so nothing can sign back in: the session's, which a
+    /// recovery reconnects with, and the reusable accesspoint login an earlier version kept in
+    /// the keychain, which nothing reads any more and a logout still removes.
     public func clearStreamingCredentials() async {
-        storedCredentials.clear()
+        KeychainManager.clearStoredLogin()
         lifecycleGeneration += 1
         await session?.forgetCredentials()
     }
@@ -507,7 +463,6 @@ public actor LibrespotClient {
             reconnectAttempt: reconnectAttempt,
             lastError: error,
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
-            streams: streams,
         )
         publish { $0.connection = state }
     }

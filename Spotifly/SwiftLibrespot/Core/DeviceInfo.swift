@@ -30,7 +30,8 @@ public enum SpotifyDeviceType: Int, Sendable {
     case homeThing = 103
 }
 
-/// Information about this device for Spotify Connect registration
+/// Information about this device for Spotify Connect registration. It registers as one that
+/// does not play (`SpircController.buildDevice`): Spotify's Soloist plays for this Mac.
 public nonisolated struct DeviceInfo: Sendable {
     /// Unique device identifier (persisted across sessions)
     public let deviceId: String
@@ -50,21 +51,6 @@ public nonisolated struct DeviceInfo: Sendable {
     /// Software version
     public let softwareVersion: String
 
-    /// Whether this device plays audio. Spotify Connect offers it as a speaker only if so.
-    public var supportsPlayback: Bool
-
-    /// Whether this device supports volume control
-    public let supportsVolume: Bool
-
-    /// Whether this device supports gapless playback
-    public let supportsGapless: Bool
-
-    /// Whether this device can be a Spotify Connect controller
-    public let canBeController: Bool
-
-    /// Maximum supported audio bitrate
-    public let maxBitrate: Int
-
     public init(
         deviceId: String,
         deviceName: String,
@@ -72,11 +58,6 @@ public nonisolated struct DeviceInfo: Sendable {
         brandName: String = "Apple",
         modelName: String = "Mac",
         softwareVersion: String = "1.0.0",
-        supportsPlayback: Bool = true,
-        supportsVolume: Bool = true,
-        supportsGapless: Bool = true,
-        canBeController: Bool = true,
-        maxBitrate: Int = 320,
     ) {
         self.deviceId = deviceId
         self.deviceName = deviceName
@@ -84,11 +65,6 @@ public nonisolated struct DeviceInfo: Sendable {
         self.brandName = brandName
         self.modelName = modelName
         self.softwareVersion = softwareVersion
-        self.supportsPlayback = supportsPlayback
-        self.supportsVolume = supportsVolume
-        self.supportsGapless = supportsGapless
-        self.canBeController = canBeController
-        self.maxBitrate = maxBitrate
     }
 
     /// Creates a DeviceInfo with auto-generated device ID from Keychain

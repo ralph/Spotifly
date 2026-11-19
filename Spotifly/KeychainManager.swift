@@ -58,25 +58,14 @@ nonisolated enum KeychainManager {
         delete(key: keymasterTokensKey, service: keymasterService)
     }
 
-    // MARK: - Stored accesspoint login
+    // MARK: - Stored accesspoint login, which no longer exists
 
     private static let storedLoginService = "com.spotifly.librespot"
     private static let storedLoginKey = "stored_login"
 
-    /// The reusable login `APWelcome` hands out (`StoredCredentialsStore`). It was a file in the
-    /// App Sandbox container until the app left the sandbox, where any process of the user
-    /// could have read it.
-    static func saveStoredLogin(_ login: StoredLogin) throws {
-        try save(key: storedLoginKey, data: JSONEncoder().encode(login), service: storedLoginService)
-    }
-
-    static func loadStoredLogin() -> StoredLogin? {
-        guard let data = load(key: storedLoginKey, service: storedLoginService) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(StoredLogin.self, from: data)
-    }
-
+    /// Deletes the reusable accesspoint login the built-in player kept, which nothing reads
+    /// since Soloist became the only player. A logout still runs it, so a Mac that stored one
+    /// does not keep it, a live credential for the account, after signing out.
     static func clearStoredLogin() {
         delete(key: storedLoginKey, service: storedLoginService)
     }

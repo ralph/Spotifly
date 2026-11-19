@@ -128,7 +128,7 @@ struct PlayerModelTests {
         let model = PlayerModel()
         let connected = LibrespotConnectionState(
             sessionConnected: true, deviceId: "mac", deviceName: "Spotifly", reconnectAttempt: 0,
-            lastError: "Connection lost", connectedSinceMs: 1_000_000, streams: true,
+            lastError: "Connection lost", connectedSinceMs: 1_000_000,
         )
         model.apply(PlayerSnapshot(connection: connected))
 

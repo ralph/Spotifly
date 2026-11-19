@@ -317,7 +317,6 @@
 // The grant: signing in on the login screen, re-authorizing playback everywhere else
 "auth.connect_cancel" = "Waiting for your browser — cancel";
 "auth.connect_failed" = "Could not connect to Spotify. Please try again.";
-"playback.needs_premium" = "Playing on this Mac needs Spotify Premium.";
 "common.cancel" = "Cancel";
 "soloist.status" = "Status";
 "soloist.status.off" = "Off";

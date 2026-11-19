@@ -317,7 +317,6 @@
 // Die Autorisierung: Anmeldung auf dem Login-Screen, Wiedergabe-Freigabe überall sonst
 "auth.connect_cancel" = "Warte auf deinen Browser — abbrechen";
 "auth.connect_failed" = "Verbindung zu Spotify fehlgeschlagen. Bitte versuche es erneut.";
-"playback.needs_premium" = "Wiedergabe auf diesem Mac nur mit Spotify Premium.";
 "common.cancel" = "Abbrechen";
 "soloist.status" = "Status";
 "soloist.status.off" = "Aus";

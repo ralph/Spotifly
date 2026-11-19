@@ -12,16 +12,6 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
     // MARK: - Connection Errors
 
     case connectionFailed(String)
-    case authenticationFailed(String)
-    /// The accesspoint refused the login because the account is not Premium.
-    case premiumRequired
-
-    // MARK: - Protocol Errors
-
-    case handshakeFailed(String)
-    case encryptionError(String)
-    case macMismatch
-    case audioKeyError(Int)
 
     // MARK: - Request Errors
 
@@ -42,18 +32,6 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
         switch self {
         case let .connectionFailed(message):
             "Connection failed: \(message)"
-        case let .authenticationFailed(message):
-            "Authentication failed: \(message)"
-        case .premiumRequired:
-            String(localized: "playback.needs_premium")
-        case let .handshakeFailed(message):
-            "Handshake failed: \(message)"
-        case let .encryptionError(message):
-            "Encryption error: \(message)"
-        case .macMismatch:
-            "MAC verification failed"
-        case let .audioKeyError(code):
-            "Audio key error: \(code)"
         case let .requestFailed(request, status):
             "\(request) failed: HTTP \(status)"
         case .spircNotReady:

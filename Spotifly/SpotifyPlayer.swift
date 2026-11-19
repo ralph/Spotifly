@@ -68,9 +68,6 @@ nonisolated struct LibrespotConnectionState: Equatable {
     let reconnectAttempt: UInt32
     let lastError: String?
     let connectedSinceMs: UInt64?
-    /// Whether this Mac may play for the account: false for an account Spotify named other
-    /// than Premium at login, or refused for want of it. See `LibrespotSession.streams`.
-    let streams: Bool
 }
 
 /// Everything the player tells the app, as of one moment.
@@ -99,14 +96,11 @@ enum SpotifyPlayer {
     /// Mac (`SoloistEngine`).
     ///
     /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle, and the client is
-    /// told where its credentials come from: the stored reusable login from an earlier grant if
-    /// there is one, else a fresh keymaster token, with the client token spclient requires.
+    /// told where its credentials come from: the keymaster grant, with the client token
+    /// spclient requires.
     @SpotifyPlayerActor
     static func initialize() async throws {
-        try await LibrespotClient.shared.initialize(
-            httpCredentials: .live,
-            usernameProvider: { await KeymasterSession.shared.username },
-        )
+        try await LibrespotClient.shared.initialize(httpCredentials: .live)
     }
 
     /// Shuts down, which takes this device off Spotify Connect. Call this when the app is
@@ -155,12 +149,9 @@ enum SpotifyPlayer {
 
     // MARK: - Streaming Credentials
 
-    /// Removes the cached streaming credentials so the next launch cannot connect the
-    /// account that just logged out.
-    ///
-    /// Clears both halves of the grant. The reusable AP credentials live in the keychain
-    /// beside the keymaster tokens; forgetting only the first would leave a long-lived refresh
-    /// token for the signed-out account behind.
+    /// Removes the credentials so neither a recovery nor the next launch can connect the
+    /// account that just logged out: the session's, and the keymaster tokens in the keychain,
+    /// a long-lived refresh token for the signed-out account if left behind.
     static func clearStreamingCredentials() async {
         await LibrespotClient.shared.clearStreamingCredentials()
         await KeymasterSession.shared.clear()

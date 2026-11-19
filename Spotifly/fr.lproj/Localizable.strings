@@ -317,7 +317,6 @@
 // L'autorisation : la connexion sur l'écran de login, la relance de la lecture ailleurs
 "auth.connect_cancel" = "En attente de votre navigateur — annuler";
 "auth.connect_failed" = "Impossible de se connecter à Spotify. Veuillez réessayer.";
-"playback.needs_premium" = "La lecture sur ce Mac nécessite Spotify Premium.";
 "common.cancel" = "Annuler";
 "soloist.status" = "État";
 "soloist.status.off" = "Désactivé";

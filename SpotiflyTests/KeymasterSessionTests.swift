@@ -122,7 +122,7 @@ struct KeymasterSessionTests {
         #expect(store.load()?.accessToken == "access-1")
     }
 
-    @Test func `a refresh keeps the username the accesspoint needs`() async throws {
+    @Test func `a refresh keeps the username a later grant is checked against`() async throws {
         // Only the initial exchange carries it; a refresh that omits it must not blank it.
         let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
         let spy = SpyRefresher()
