@@ -145,6 +145,7 @@ public nonisolated struct ConnectCapabilities: Sendable {
             case 7: caps.isObservable = field.bool
             case 8: caps.volumeSteps = Int32(truncatingIfNeeded: field.value)
             case 9: caps.supportedTypes.append(field.string)
+            case 12: caps.hidden = field.bool
             case 13: caps.disableVolume = field.bool
             default: break
             }
