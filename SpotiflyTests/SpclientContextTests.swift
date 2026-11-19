@@ -1,5 +1,5 @@
 //
-//  SPClientRequestTests.swift
+//  SpclientContextTests.swift
 //  SpotiflyTests
 //
 //  The context resolver's requests to spclient are signed like the app's pages, and share
@@ -11,7 +11,7 @@ import Foundation
 import Testing
 
 @MainActor
-struct SPClientRequestTests {
+struct SpclientContextTests {
     private let contextAnswer = Data(#"""
     {"metadata":{"context_description":"Album"},"pages":[{"tracks":[{"uri":"spotify:track:a","uid":"u1"}]}]}
     """#.utf8)
@@ -44,23 +44,33 @@ struct SPClientRequestTests {
         sent: Recorder<URLRequest>,
         pauses: Recorder<Duration> = Recorder(),
         rejected: Recorder<String> = Recorder(),
-    ) -> SPClient {
+    ) -> SpclientAPI {
         let credentials = spotifyCredentials(
             invalidateClientToken: { rejected.record($0) },
             pause: { pauses.record($0) },
             transport: scripted(statuses, body: body, failureHeaders: failureHeaders, sent: sent),
         )
-        return SPClient(credentials: credentials, deviceId: "device")
+        return SpclientAPI(credentials: credentials)
     }
 
-    @Test func `a server error that goes on is a failed request`() async throws {
+    /// The status a resolve failed with, if it failed as a refused request.
+    private func refusal(of client: SpclientAPI, resolving uri: String = "spotify:album:x") async -> Int? {
+        do {
+            _ = try await client.resolveContext(uri, deviceId: "device")
+            return nil
+        } catch let SpclientError.requestFailed(status, _) {
+            return status
+        } catch {
+            return nil
+        }
+    }
+
+    @Test func `a server error that goes on is a failed request`() async {
         let sent = Recorder<URLRequest>()
         let pauses = Recorder<Duration>()
         let client = spclient([503], body: contextAnswer, sent: sent, pauses: pauses)
 
-        await #expect(throws: LibrespotError.requestFailed("Context resolve", status: 503)) {
-            _ = try await client.resolveContext("spotify:album:x")
-        }
+        #expect(await refusal(of: client) == 503)
         #expect(sent.values.count == 3)
         #expect(pauses.values == [.seconds(1), .seconds(3)])
     }
@@ -73,7 +83,7 @@ struct SPClientRequestTests {
             let rejected = Recorder<String>()
             let client = spclient([status, 200], body: contextAnswer, failureHeaders: headers, sent: sent, rejected: rejected)
 
-            let context = try await client.resolveContext("spotify:album:x")
+            let context = try await client.resolveContext("spotify:album:x", deviceId: "device")
 
             #expect(context.tracks == ["spotify:track:a"])
             #expect(rejected.values == ["ct"], "\(status)")
@@ -82,14 +92,12 @@ struct SPClientRequestTests {
     }
 
     /// A 400 is also a bad request, which asking again would not mend.
-    @Test func `a 400 that does not name the client token is not asked again`() async throws {
+    @Test func `a 400 that does not name the client token is not asked again`() async {
         let sent = Recorder<URLRequest>()
         let rejected = Recorder<String>()
         let client = spclient([400, 200], body: contextAnswer, sent: sent, rejected: rejected)
 
-        await #expect(throws: LibrespotError.requestFailed("Context resolve", status: 400)) {
-            _ = try await client.resolveContext("spotify:album:x")
-        }
+        #expect(await refusal(of: client) == 400)
         #expect(rejected.values.isEmpty)
         #expect(sent.values.count == 1)
     }
@@ -104,15 +112,15 @@ struct SPClientRequestTests {
             sent.record(request)
             return (sent.values.count == 1 ? first : next, httpResponse(200, url: request.url!))
         })
-        let client = SPClient(credentials: credentials, deviceId: "device")
+        let client = SpclientAPI(credentials: credentials)
 
-        let context = try await client.resolveContext("spotify:playlist:x")
+        let context = try await client.resolveContext("spotify:playlist:x", deviceId: "device")
 
         #expect(context.tracks == ["spotify:track:a", "spotify:track:b"])
         #expect(context.nextPageUrl == nil)
         #expect(sent.values.last?.url?.path == "/some-service/v1/page")
         #expect(sent.values.last?.url?.query == "count=1")
-        #expect(SPClient.nextPagePath("spotify:album:x?page=2") == "/context-resolve/v1/spotify:album:x?page=2")
+        #expect(SpclientAPI.nextPagePath("spotify:album:x?page=2") == "/context-resolve/v1/spotify:album:x?page=2")
     }
 
     /// A station is queued from its first page: it names pages without end. From its third page
@@ -125,15 +133,15 @@ struct SPClientRequestTests {
             sent.record(request)
             return (first, httpResponse(200, url: request.url!))
         })
-        let client = SPClient(credentials: credentials, deviceId: "device")
-        #expect(LibrespotClient.pagesUpFront(of: "spotify:station:track:x") == 1)
-        #expect(LibrespotClient.pagesUpFront(of: "spotify:playlist:x") == 10)
+        let client = SpclientAPI(credentials: credentials)
+        #expect(SpclientAPI.pagesUpFront(of: "spotify:station:track:x") == 1)
+        #expect(SpclientAPI.pagesUpFront(of: "spotify:playlist:x") == 10)
 
-        let station = try await client.resolveContext("spotify:station:track:x", pageLimit: 1)
+        let station = try await client.resolveContext("spotify:station:track:x", deviceId: "device", pageLimit: 1)
         #expect(station.tracks == ["spotify:track:a"])
         #expect(sent.values.count == 1)
 
-        let next = try SPClient.nextPagePath(#require(station.nextPageUrl))
+        let next = try SpclientAPI.nextPagePath(#require(station.nextPageUrl))
         #expect(next == "/radio-apollo/v3/tracks/spotify:station:track:x?count=50&prev_tracks=a")
     }
 
@@ -142,39 +150,48 @@ struct SPClientRequestTests {
     @Test func `a station page names only the tracks played last`() {
         let played = (0 ..< 400).map { "t\($0)" }
         let url = "hm://radio-router/v3/tracks/spotify:station:track:x?salt=1&prev_tracks=\(played.joined(separator: ","))&count=50"
-        let path = SPClient.nextPagePath(url)
+        let path = SpclientAPI.nextPagePath(url)
         let named = path.components(separatedBy: "prev_tracks=")[1].components(separatedBy: "&")[0].split(separator: ",")
 
-        #expect(named.count == SPClient.stationPageMemory)
+        #expect(named.count == SpclientAPI.stationPageMemory)
         #expect(named.first == "t0")
-        #expect(named.last == "t\(SPClient.stationPageMemory - 1)")
+        #expect(named.last == "t\(SpclientAPI.stationPageMemory - 1)")
         #expect(path.hasPrefix("/radio-apollo/v3/tracks/spotify:station:track:x?salt=1&prev_tracks=t0,"))
         #expect(path.hasSuffix("&count=50"))
 
         let short = "hm://radio-apollo/v3/tracks/spotify:station:track:x?prev_tracks=a,b"
-        #expect(SPClient.nextPagePath(short) == "/radio-apollo/v3/tracks/spotify:station:track:x?prev_tracks=a,b")
+        #expect(SpclientAPI.nextPagePath(short) == "/radio-apollo/v3/tracks/spotify:station:track:x?prev_tracks=a,b")
+    }
+
+    /// A track queues as itself, a link as its uri, and neither asks the resolver.
+    @Test func `a track is queued without resolving anything`() async throws {
+        let sent = Recorder<URLRequest>()
+        let client = spclient([200], body: contextAnswer, sent: sent)
+
+        #expect(try await client.queueableTracks(for: "spotify:track:t1", deviceId: "device") == ["spotify:track:t1"])
+        #expect(try await client.queueableTracks(for: " https://open.spotify.com/track/t1?si=abc", deviceId: "device") == ["spotify:track:t1"])
+        #expect(sent.values.isEmpty)
+        #expect(try await client.queueableTracks(for: "spotify:album:x", deviceId: "device") == ["spotify:track:a"])
     }
 
     @Test func `a later page that fails leaves the pages before it`() async throws {
         let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a"}],"next_page_url":"hm://some-service/v1/page"}]}"#.utf8)
         let client = spclient([200, 404], body: first, sent: Recorder())
 
-        let context = try await client.resolveContext("spotify:playlist:x")
+        let context = try await client.resolveContext("spotify:playlist:x", deviceId: "device")
         #expect(context.tracks == ["spotify:track:a"])
         #expect(context.nextPageUrl == nil)
 
         // The first page failing is the resolve failing.
         let refused = spclient([404], body: Data(), sent: Recorder())
-        await #expect(throws: LibrespotError.self) {
-            _ = try await refused.resolveContext("spotify:album:x")
-        }
+        #expect(await refusal(of: refused) == 404)
     }
 
     @Test func `a context page that meets a server error is asked for again`() async throws {
         let sent = Recorder<URLRequest>()
         let client = spclient([502, 200], body: contextAnswer, sent: sent)
 
-        let context = try await client.resolveContext("spotify:album:x")
+        let context = try await client.resolveContext("spotify:album:x", deviceId: "device")
 
         #expect(context.tracks == ["spotify:track:a"])
         #expect(sent.values.count == 2)
@@ -186,9 +203,10 @@ struct SPClientRequestTests {
         let sent = Recorder<URLRequest>()
         let client = spclient([200], body: contextAnswer, sent: sent)
 
-        _ = try await client.resolveContext("spotify:album:x")
+        _ = try await client.resolveContext("spotify:album:x", deviceId: "device")
 
         let request = try #require(sent.values.first)
+        #expect(request.url?.absoluteString == "https://spclient.wg.spotify.com/context-resolve/v1/spotify%3Aalbum%3Ax?device_id=device")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer at")
         #expect(request.value(forHTTPHeaderField: "Client-Token") == "ct")
         #expect(request.value(forHTTPHeaderField: "App-Platform") == "OSX_ARM64")

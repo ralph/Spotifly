@@ -27,11 +27,6 @@ public actor LibrespotClient {
     private let deviceInfo: DeviceInfo
 
     private var session: LibrespotSession?
-    private var spclient: SPClient?
-
-    /// What the HTTP requests carry (dealer, spclient). Injected by the facade, which binds it
-    /// to the app's keymaster grant.
-    private var httpCredentials: SpotifyCredentials?
 
     /// Consumes the current session's events; cancelled when it is torn down.
     private var sessionEvents: Task<Void, Never>?
@@ -80,7 +75,6 @@ public actor LibrespotClient {
     /// (`SpircController.buildDevice`), and the session needs only the token
     /// (`LibrespotSession.connect`).
     func initialize(httpCredentials: SpotifyCredentials) async throws {
-        self.httpCredentials = httpCredentials
         shuttingDown = false
         let generation = lifecycleGeneration
 
@@ -106,8 +100,6 @@ public actor LibrespotClient {
             session = nil
             throw LibrespotError.invalidState("Initialization superseded")
         }
-
-        await attachTransport()
 
         flags.withLock { $0.hasSession = true }
 
@@ -152,7 +144,6 @@ public actor LibrespotClient {
         publish { $0.playback = nil }
         await session?.disconnect()
         session = nil
-        spclient = nil
 
         flags.withLock {
             $0.hasSession = false
@@ -190,25 +181,11 @@ public actor LibrespotClient {
 
         do {
             try await session.connect(signing: credentials)
-            await attachTransport()
             publishConnectionState(connected: true)
             debugLog("LibrespotClient", "Recovery succeeded")
         } catch {
             debugLog("LibrespotClient", "Recovery failed: \(error)")
             publishConnectionState(connected: false, error: error.localizedDescription)
-        }
-    }
-
-    /// Creates SPClient for a new session; a reconnect keeps it, since it holds no socket.
-    private func attachTransport() async {
-        guard let httpCredentials, let session else { return }
-
-        if spclient == nil {
-            spclient = await SPClient(
-                credentials: httpCredentials,
-                spclientHost: session.spclientHost,
-                deviceId: deviceInfo.deviceId,
-            )
         }
     }
 
@@ -221,33 +198,6 @@ public actor LibrespotClient {
         KeychainManager.clearStoredLogin()
         lifecycleGeneration += 1
         await session?.forgetCredentials()
-    }
-
-    // MARK: - Queueing
-
-    /// The tracks queueing `uri` means: the track itself, or the tracks of the
-    /// album or playlist it names, which go to the device that plays one
-    /// connect-state command each (`PlaybackViewModel.addToQueue`).
-    ///
-    /// "Play next" on an album or a playlist hands over the context's uri. It
-    /// used to be enqueued as it was, so the player was later asked to load an
-    /// album as a track, failed, and stopped playback there.
-    func queueableTracks(for uri: String) async throws -> [String] {
-        let normalized = Self.normalizedUri(uri)
-        if normalized.hasPrefix("spotify:track:") {
-            return [normalized]
-        }
-        guard let spclient else {
-            throw LibrespotError.notInitialized
-        }
-        return try await spclient.resolveContext(normalized, pageLimit: Self.pagesUpFront(of: normalized)).tracks
-    }
-
-    /// How many of a context's pages are fetched before it is queued: one of a station's,
-    /// which names pages without end. Any other context comes whole, as a 150-track playlist
-    /// did in one page.
-    nonisolated static func pagesUpFront(of uri: String) -> Int {
-        uri.hasPrefix("spotify:station:") ? 1 : 10
     }
 
     // MARK: - Synchronous State (read by the facade without awaiting)
@@ -456,16 +406,6 @@ public actor LibrespotClient {
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
         )
         publish { $0.connection = state }
-    }
-
-    // MARK: - Helpers
-
-    private static func normalizedUri(_ uriOrUrl: String) -> String {
-        let trimmed = uriOrUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let id = SpotifyAPI.parseTrackURI(trimmed) {
-            return "spotify:track:\(id)"
-        }
-        return trimmed
     }
 }
 

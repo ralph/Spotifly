@@ -533,7 +533,7 @@ final class PlaybackViewModel {
         // connect-state queues one track per command, so an album or playlist goes as its
         // tracks, in order.
         sendTransportCommand("addToQueue()", send: { from, to in
-            for track in try await SpotifyPlayer.queueableTracks(for: uri) {
+            for track in try await SpclientAPI().queueableTracks(for: uri, deviceId: from) {
                 try await SpclientAPI().sendCommand(.addToQueue(trackUri: track), from: from, to: to)
             }
         })

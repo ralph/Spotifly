@@ -161,11 +161,6 @@ public actor LibrespotSession {
         credentials
     }
 
-    /// The spclient host, where contexts are resolved.
-    public var spclientHost: String? {
-        resolvedEndpoints?.spclients.first
-    }
-
     // MARK: - SPIRC Events (forwarded from SpircController)
 
     private var spircSubscriptions: Set<AnyCancellable> = []

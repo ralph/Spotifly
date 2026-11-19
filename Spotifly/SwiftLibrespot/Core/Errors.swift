@@ -26,7 +26,6 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
 
     case notInitialized
     case invalidState(String)
-    case timeout(String)
 
     public var errorDescription: String? {
         switch self {
@@ -40,8 +39,6 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
             "Not initialized"
         case let .invalidState(message):
             "Invalid state: \(message)"
-        case let .timeout(message):
-            "Timeout: \(message)"
         }
     }
 }

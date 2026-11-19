@@ -176,7 +176,7 @@ struct SPClientParsingTests {
         // The shape measured for Liked Songs on 2026-09-30, cut to one track.
         let json = #"{"metadata":{"format_list_type":"liked-songs","context_description":"Lieblingssongs"},"pages":[{"tracks":[{"uri":"spotify:track:2vaVAZtZ6p2bC1gBrUwrPA","uid":"95942ae3715ec9d21e76"}]}]}"#
 
-        let report = SPClient.parseContextReport(Data(json.utf8))
+        let report = SpclientAPI.parseContextReport(Data(json.utf8))
 
         #expect(report.tracks == ["spotify:track:2vaVAZtZ6p2bC1gBrUwrPA"])
         #expect(report.nextPageUrl == nil)
