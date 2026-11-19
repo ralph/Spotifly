@@ -655,13 +655,6 @@ final class PlaybackViewModel {
         handlePlaybackStateUpdate(player.playback)
     }
 
-    /// Who to address a volume command as, and to: the active device. Nil when nothing is
-    /// active.
-    private func connectRoute() -> (from: String, to: String)? {
-        guard let to = player.activeDeviceId, !to.isEmpty, let from = commandSource else { return nil }
-        return (from, to)
-    }
-
     func next() {
         skip(.next)
     }
@@ -1378,13 +1371,17 @@ final class PlaybackViewModel {
         volumeSubscription = volumeSubject
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
             .sink { [weak self] newVolume in
-                guard let self, isInitialized, let route = connectRoute() else { return }
+                // To the active device only, never on to Soloist as a transport command goes: the
+                // drag was of the active device's volume, and a device that has gone inactive since
+                // has nothing to set.
+                guard let self, isInitialized, let to = player.activeDeviceId, !to.isEmpty,
+                      let from = commandSource else { return }
                 let percent = Int((newVolume * 100).rounded())
                 Task {
                     try? await SpclientAPI().setVolume(
                         percent: percent,
-                        from: route.from,
-                        to: route.to,
+                        from: from,
+                        to: to,
                     )
                 }
             }
