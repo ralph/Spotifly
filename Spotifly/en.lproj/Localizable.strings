@@ -311,6 +311,7 @@
 "profile.logout" = "Log Out…";
 "profile.logout.title" = "Log out of Spotify?";
 "profile.logout.message" = "You can log in again at any time.";
+"profile.logout.message_soloist" = "You can log in again at any time. Soloist forgets your account: afterwards, pick it once in a Spotify app, as the first time.";
 
 // The grant: signing in on the login screen, re-authorizing playback everywhere else
 "auth.connect_cancel" = "Waiting for your browser — cancel";

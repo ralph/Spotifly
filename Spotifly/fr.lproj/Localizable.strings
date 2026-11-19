@@ -311,6 +311,7 @@
 "profile.logout" = "Se déconnecter…";
 "profile.logout.title" = "Se déconnecter de Spotify ?";
 "profile.logout.message" = "Vous pouvez vous reconnecter à tout moment.";
+"profile.logout.message_soloist" = "Vous pouvez vous reconnecter à tout moment. Soloist oublie votre compte : ensuite, choisissez-le une fois dans une app Spotify, comme la première fois.";
 
 // L'autorisation : la connexion sur l'écran de login, la relance de la lecture ailleurs
 "auth.connect_cancel" = "En attente de votre navigateur — annuler";
