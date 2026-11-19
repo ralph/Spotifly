@@ -43,7 +43,6 @@ nonisolated struct QueueState: Equatable {
 /// Playback state as the cluster reports it, for whichever device plays.
 nonisolated struct PlaybackState: Equatable {
     let isPlaying: Bool
-    let isPaused: Bool
     let trackUri: String
     let positionMs: Int64
     let durationMs: Int64

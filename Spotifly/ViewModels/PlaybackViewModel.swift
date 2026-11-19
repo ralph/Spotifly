@@ -407,58 +407,42 @@ final class PlaybackViewModel {
         anchorPosition(0)
     }
 
-    /// Where a play request should go.
-    nonisolated enum PlaybackTarget: Equatable {
-        /// A Connect device, commanded over connect-state: Soloist, or another device.
-        case remote(deviceId: String)
-        /// Soloist is set up, and it is not running or not paired yet.
-        case soloistNotReady
-        /// Soloist is not set up, so nothing plays on this Mac.
-        case needsSoloist
-    }
-
-    /// Soloist's part in where to play (`SoloistEngine`).
-    nonisolated enum SoloistPlayer: Equatable {
-        case notSetUp
-        case ready(deviceId: String)
-        case notReady
-    }
-
-    /// Decides where to play.
+    /// The device a play goes to, or nil after saying why there is none.
     ///
     /// Soloist plays for this Mac, so a ready Soloist takes every play, even while a phone is
     /// active. Until it is ready, an active device serves the request, so a phone still plays
     /// while Soloist starts. Only when neither exists is there anything to tell the user, and
-    /// what depends on whether Soloist is set up at all.
-    nonisolated static func playbackTarget(activeDeviceId: String?, soloist: SoloistPlayer) -> PlaybackTarget {
-        if case let .ready(deviceId) = soloist {
-            return .remote(deviceId: deviceId)
+    /// what depends on whether Soloist is set up at all: the bar says it is not ready yet, or
+    /// the alert that opens Settings comes up.
+    ///
+    /// The cluster is the only source of the active device, and it needs the dealer socket the
+    /// session holds: with no session there are no devices, and a play has nowhere to go but a
+    /// ready Soloist, which needs the session too, to send from (`commandSource`).
+    func playbackDevice(
+        activeDeviceId: String?,
+        soloistIsSetUp: Bool = SoloistEngine.isSetUp,
+        soloistReadyId: String? = SoloistEngine.shared.readyDeviceId,
+    ) -> String? {
+        if soloistIsSetUp, let soloistReadyId {
+            return soloistReadyId
         }
         if let activeDeviceId {
-            return .remote(deviceId: activeDeviceId)
+            return activeDeviceId
         }
-        return soloist == .notReady ? .soloistNotReady : .needsSoloist
+        if soloistIsSetUp {
+            errorMessage = String(localized: "soloist.not_ready")
+        } else {
+            needsSoloist = true
+        }
+        return nil
     }
 
-    /// Plays a track or a context, wherever `playbackTarget` says. A row in a list passes its
+    /// Plays a track or a context, wherever `playbackDevice` says. A row in a list passes its
     /// index and its track, which the device starts at.
     func play(uriOrUrl: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
-
-        switch resolvedPlaybackTarget() {
-        case let .remote(deviceId):
-            // One uri either way: the command's own context builder tells a track from a
-            // context, where the Web API needed the caller to split them into two fields.
-            await startRemotely(
-                .play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex, trackUri: startingAtUri),
-                deviceId: deviceId,
-            )
-
-        case let target:
-            explain(target)
-        }
+        // One uri either way: the command's own context builder tells a track from a
+        // context, where the Web API needed the caller to split them into two fields.
+        await start(.play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex, trackUri: startingAtUri))
     }
 
     func playTrack(trackId: String) async {
@@ -478,23 +462,9 @@ final class PlaybackViewModel {
     }
 
     func playTracks(_ trackUris: [String]) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
-
         // The one caller disables its button on an empty list, so this only guards `[0]`.
         guard !trackUris.isEmpty else { return }
-
-        switch resolvedPlaybackTarget() {
-        case let .remote(deviceId):
-            await startRemotely(
-                .play(trackUris: trackUris),
-                deviceId: deviceId,
-            )
-
-        case let target:
-            explain(target)
-        }
+        await start(.play(trackUris: trackUris))
     }
 
     /// Starts song radio: the track's station, a context like any other, played wherever `play`
@@ -518,59 +488,19 @@ final class PlaybackViewModel {
     /// the normalization: `play(uriOrUrl:)` accepts an `open.spotify.com/track/ID` link as
     /// readily as a uri, and only the uri form can be played.
     static func remoteStartUri(for uriOrUrl: String) -> String {
-        if let id = trackId(from: uriOrUrl) {
-            return "spotify:track:\(id)"
+        SpotifyAPI.parseTrackURI(uriOrUrl).map { "spotify:track:\($0)" } ?? uriOrUrl
+    }
+
+    /// Starts content on the device `playbackDevice` names, once the session is up. The
+    /// cluster reports what it plays, and the bar and the queue follow it through the player
+    /// model.
+    private func start(_ command: ConnectCommand) async {
+        if !isInitialized {
+            await initializeIfNeeded()
         }
-        return uriOrUrl
-    }
 
-    /// The track id in a Spotify track URI or link, if it is one.
-    private static func trackId(from uriOrUrl: String) -> String? {
-        if let range = uriOrUrl.range(of: "spotify:track:") {
-            return String(uriOrUrl[range.upperBound...])
-        }
-        guard let range = uriOrUrl.range(of: "open.spotify.com/track/") else { return nil }
-        let rest = uriOrUrl[range.upperBound...]
-        let id = rest.prefix { $0 != "?" && $0 != "/" && $0 != "#" }
-        return id.isEmpty ? nil : String(id)
-    }
-
-    /// Decides where to play, from the cluster's active device and Soloist's state.
-    ///
-    /// The cluster is the only source of the active device, and it needs the dealer socket the
-    /// session holds: with no session there are no devices, and a play has nowhere to go but a
-    /// ready Soloist, which needs the session too, to send from (`startRemotely`).
-    private func resolvedPlaybackTarget() -> PlaybackTarget {
-        Self.playbackTarget(activeDeviceId: player.activeDeviceId, soloist: soloistPlayer)
-    }
-
-    private var soloistPlayer: SoloistPlayer {
-        guard SoloistEngine.isSetUp else { return .notSetUp }
-        return SoloistEngine.shared.readyDeviceId.map { .ready(deviceId: $0) } ?? .notReady
-    }
-
-    /// Says why a play or a command found nowhere to go: in the bar while Soloist starts, and
-    /// with the alert that opens Settings while it is not set up.
-    private func explain(_ target: PlaybackTarget) {
-        switch target {
-        case .soloistNotReady:
-            errorMessage = String(localized: "soloist.not_ready")
-        case .needsSoloist:
-            needsSoloist = true
-        case .remote:
-            break
-        }
-    }
-
-    /// Starts content on a Connect device. The cluster reports what it plays, and the bar and
-    /// the queue follow it through the player model.
-    ///
-    /// Sent from the session's own device, so without a session nothing can be sent.
-    private func startRemotely(
-        _ command: ConnectCommand,
-        deviceId: String,
-    ) async {
-        guard let from = player.ownDeviceId, !from.isEmpty else {
+        guard let deviceId = playbackDevice(activeDeviceId: player.activeDeviceId) else { return }
+        guard let from = commandSource else {
             errorMessage = String(localized: "error.player_not_initialized")
             return
         }
@@ -602,7 +532,7 @@ final class PlaybackViewModel {
         // Queued where playback is: the queue on screen is the active device's, mirrored.
         // connect-state queues one track per command, so an album or playlist goes as its
         // tracks, in order.
-        sendTransportCommand("addToQueue()", remote: { from, to in
+        sendTransportCommand("addToQueue()", send: { from, to in
             for track in try await SpotifyPlayer.queueableTracks(for: uri) {
                 try await SpclientAPI().sendCommand(.addToQueue(trackUri: track), from: from, to: to)
             }
@@ -621,6 +551,17 @@ final class PlaybackViewModel {
 
     // MARK: - Playback Control (via connect-state)
 
+    /// The session's own device, which every command is sent from; nil without a session, when
+    /// nothing can be sent.
+    ///
+    /// The backend does not validate that segment — it derives the source from the session,
+    /// which is why librespot's transfer passes its own id for both sides — so this is an
+    /// identifier for their logs rather than a routing decision.
+    private var commandSource: String? {
+        guard let id = player.ownDeviceId, !id.isEmpty else { return nil }
+        return id
+    }
+
     /// Sends a transport command over connect-state to the active device, or with nobody
     /// active to Soloist, which plays for this Mac. Returns whether the command was issued at
     /// all.
@@ -635,7 +576,7 @@ final class PlaybackViewModel {
     /// active, a command goes to Soloist, as a play does, and `idleSoloist` stands in for it
     /// where Soloist must first take the state over: Play hands it the last playback, which
     /// the bar mirrors, so it plays from there. While Soloist is not ready, or not set up, the
-    /// command is explained as a play is.
+    /// command is explained as a play is (`playbackDevice`).
     ///
     /// **That state used to be found out by asking**: the Web API answered 404 and the 404 was
     /// caught. connect-state addresses the target in the *url*, so with nobody active there is
@@ -647,9 +588,27 @@ final class PlaybackViewModel {
     /// other command leaves a promise standing, including one a seek still in flight made.
     @discardableResult
     private func sendTransportCommand(
+        _ command: ConnectCommand,
+        promisesPosition: Bool = false,
+        idleSoloist: ((_ from: String, _ soloist: String) async throws -> Void)? = nil,
+        declined: @escaping (SpclientError) -> Void = { _ in },
+    ) -> Bool {
+        sendTransportCommand(
+            command.endpoint.rawValue,
+            promisesPosition: promisesPosition,
+            send: { try await SpclientAPI().sendCommand(command, from: $0, to: $1) },
+            idleSoloist: idleSoloist,
+            declined: declined,
+        )
+    }
+
+    /// `sendTransportCommand(_:)` for what is more than one command, as queueing an album is,
+    /// one per track. `name` names it in the log.
+    @discardableResult
+    private func sendTransportCommand(
         _ name: String,
         promisesPosition: Bool = false,
-        remote: @escaping (_ from: String, _ to: String) async throws -> Void,
+        send remote: @escaping (_ from: String, _ to: String) async throws -> Void,
         idleSoloist: ((_ from: String, _ soloist: String) async throws -> Void)? = nil,
         declined: @escaping (SpclientError) -> Void = { _ in },
     ) -> Bool {
@@ -659,16 +618,15 @@ final class PlaybackViewModel {
             send = remote
             to = active
         } else {
-            guard case let .ready(soloist) = soloistPlayer else {
+            guard let soloist = playbackDevice(activeDeviceId: nil) else {
                 debugLog("PlaybackViewModel", "\(name) had no active device, and Soloist is not ready")
-                explain(Self.playbackTarget(activeDeviceId: nil, soloist: soloistPlayer))
                 return false
             }
             debugLog("PlaybackViewModel", "\(name) had no active device - sending it to Soloist")
             send = idleSoloist ?? remote
             to = soloist
         }
-        guard let from = player.ownDeviceId, !from.isEmpty else {
+        guard let from = commandSource else {
             debugLog("PlaybackViewModel", "\(name) dropped - session not connected")
             return false
         }
@@ -714,20 +672,13 @@ final class PlaybackViewModel {
 
     /// Who to address a volume command as, and to: the active device. Nil when nothing is
     /// active.
-    ///
-    /// `from` is our own device id. The backend does not validate that segment — it derives the
-    /// source from the session, which is why librespot's transfer passes its own id for both
-    /// sides — so this is an identifier for their logs rather than a routing decision.
     private func connectRoute() -> (from: String, to: String)? {
-        guard let to = player.activeDeviceId, !to.isEmpty,
-              let from = player.ownDeviceId, !from.isEmpty
-        else { return nil }
-
+        guard let to = player.activeDeviceId, !to.isEmpty, let from = commandSource else { return nil }
         return (from, to)
     }
 
     func next() {
-        skip("next()", remote: .next)
+        skip(.next)
     }
 
     /// Previous track, or the start of this one, so the bar enables it whenever a track is loaded.
@@ -737,7 +688,7 @@ final class PlaybackViewModel {
     /// doing nothing while an error banner blamed Spotify. So the refusal is answered with the
     /// seek it stood for.
     func previous() {
-        skip("previous()", remote: .previous) { [weak self] error in
+        skip(.previous) { [weak self] error in
             guard error.isNoPreviousTrack else { return }
             self?.seek(to: 0)
         }
@@ -762,24 +713,18 @@ final class PlaybackViewModel {
                 resume()
             }
         case let .next(_, uri, uid):
-            skip("skip(toNext:)", remote: .skipNext(to: uri, uid: uid))
+            skip(.skipNext(to: uri, uid: uid))
         case let .previous(_, uri, _):
-            skip("skip(toPrevious:)", remote: .play(uri: player.queue?.context ?? uri, trackUri: uri))
+            skip(.play(uri: player.queue?.context ?? uri, trackUri: uri))
         }
     }
 
     /// A command that moves to another track, whose start the display shows at once.
     private func skip(
-        _ name: String,
-        remote command: ConnectCommand,
+        _ command: ConnectCommand,
         declined: @escaping (SpclientError) -> Void = { _ in },
     ) {
-        guard sendTransportCommand(
-            name,
-            promisesPosition: true,
-            remote: { try await SpclientAPI().sendCommand(command, from: $0, to: $1) },
-            declined: declined,
-        ) else {
+        guard sendTransportCommand(command, promisesPosition: true, declined: declined) else {
             return
         }
 
@@ -798,18 +743,14 @@ final class PlaybackViewModel {
 
     func pause() {
         // The cluster reports the paused state; nothing is asserted here.
-        sendTransportCommand(
-            "pause()",
-            remote: { try await SpclientAPI().sendCommand(.pause, from: $0, to: $1) },
-        )
+        sendTransportCommand(.pause)
     }
 
     /// Resumes the active device, or with nobody active hands Soloist the last playback, which
     /// the bar mirrors: a transfer moves that state to Soloist and plays it there.
     func resume() {
         guard sendTransportCommand(
-            "resume()",
-            remote: { try await SpclientAPI().sendCommand(.resume, from: $0, to: $1) },
+            .resume,
             idleSoloist: { try await SpclientAPI().transferPlayback(from: $0, to: $1) },
         ) else {
             return
@@ -826,19 +767,12 @@ final class PlaybackViewModel {
     }
 
     func setShuffle(_ enabled: Bool) {
-        sendTransportCommand(
-            "toggleShuffle()",
-            remote: { try await SpclientAPI().sendCommand(.shuffle(enabled), from: $0, to: $1) },
-        )
+        sendTransportCommand(.shuffle(enabled))
     }
 
     /// Steps repeat on to its next mode; see `RepeatMode.next`.
     func cycleRepeat() {
-        let target = repeatMode.next
-        sendTransportCommand(
-            "cycleRepeat()",
-            remote: { try await SpclientAPI().sendCommand(.repeatMode(target), from: $0, to: $1) },
-        )
+        sendTransportCommand(.repeatMode(repeatMode.next))
     }
 
     /// Whether Next goes anywhere; see `PlaybackState.canSkipNext`.
@@ -1227,11 +1161,7 @@ final class PlaybackViewModel {
 
     /// Perform the actual seek operation (called after debouncing)
     private func performSeek(to positionMs: UInt32) {
-        let issued = sendTransportCommand(
-            "performSeek",
-            promisesPosition: true,
-            remote: { try await SpclientAPI().sendCommand(.seek(toMs: Int(positionMs)), from: $0, to: $1) },
-        )
+        let issued = sendTransportCommand(.seek(toMs: Int(positionMs)), promisesPosition: true)
 
         // seek(to:) already moved the anchor so scrubbing feels immediate. If the command
         // could not be issued at all, go back to where the cluster says playback is instead of
@@ -1257,7 +1187,7 @@ final class PlaybackViewModel {
 
         debugLog(
             "PlaybackViewModel",
-            "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
+            "Playback state update: playing=\(state.isPlaying), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
         // Every report names its track: the mirror skips a cluster's without one, and this

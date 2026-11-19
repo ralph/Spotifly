@@ -28,15 +28,21 @@ struct AccountTypeTests {
 }
 
 @MainActor
-struct PlaybackTargetTests {
+struct PlaybackDeviceTests {
+    private let model = PlaybackViewModel.shared
+
     /// Until Soloist is ready, the device that plays takes a play, so a phone still plays while
     /// Soloist starts, or before it is set up.
     @Test func `with Soloist not ready, a play goes to the active device`() {
-        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: "phone", soloist: .notReady) == .remote(deviceId: "phone"))
-        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: "phone", soloist: .notSetUp) == .remote(deviceId: "phone"))
+        #expect(model.playbackDevice(activeDeviceId: "phone", soloistIsSetUp: true, soloistReadyId: nil) == "phone")
+        #expect(model.playbackDevice(activeDeviceId: "phone", soloistIsSetUp: false, soloistReadyId: nil) == "phone")
     }
 
     @Test func `with nothing active and Soloist not set up, the play asks for Soloist`() {
-        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: nil, soloist: .notSetUp) == .needsSoloist)
+        model.needsSoloist = false
+        defer { model.needsSoloist = false }
+
+        #expect(model.playbackDevice(activeDeviceId: nil, soloistIsSetUp: false, soloistReadyId: nil) == nil)
+        #expect(model.needsSoloist)
     }
 }

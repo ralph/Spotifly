@@ -375,7 +375,6 @@ public actor LibrespotClient {
         let options = remote.options
         let playback = PlaybackState(
             isPlaying: playing,
-            isPaused: !playing,
             trackUri: track.uri,
             positionMs: remote.positionAsOfTimestamp,
             durationMs: remote.duration,

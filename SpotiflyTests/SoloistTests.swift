@@ -79,14 +79,22 @@ struct SoloistEventTests {
 struct SoloistTargetTests {
     /// Soloist plays for this Mac, so it takes a play even while a phone plays.
     @Test func `a ready Soloist is where plays go`() {
-        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: "phone", soloist: .ready(deviceId: "soloist"))
-            == .remote(deviceId: "soloist"))
-        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: nil, soloist: .ready(deviceId: "soloist"))
-            == .remote(deviceId: "soloist"))
+        let model = PlaybackViewModel.shared
+        #expect(model.playbackDevice(activeDeviceId: "phone", soloistIsSetUp: true, soloistReadyId: "soloist") == "soloist")
+        #expect(model.playbackDevice(activeDeviceId: nil, soloistIsSetUp: true, soloistReadyId: "soloist") == "soloist")
     }
 
     /// Set up but not ready, with nothing else to play on, says so.
     @Test func `a Soloist that is not ready is said to be`() {
-        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: nil, soloist: .notReady) == .soloistNotReady)
+        let model = PlaybackViewModel.shared
+        model.needsSoloist = false
+        defer {
+            model.needsSoloist = false
+            model.errorMessage = nil
+        }
+
+        #expect(model.playbackDevice(activeDeviceId: nil, soloistIsSetUp: true, soloistReadyId: nil) == nil)
+        #expect(model.errorMessage == String(localized: "soloist.not_ready"))
+        #expect(!model.needsSoloist)
     }
 }

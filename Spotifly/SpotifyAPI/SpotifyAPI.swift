@@ -21,8 +21,9 @@ enum SpotifyAPI {
         }
 
         guard let range = trimmed.range(of: "open.spotify.com/track/") else { return nil }
-        // Everything up to the query string, which carries `?si=` share tokens.
-        let id = trimmed[range.upperBound...].prefix { $0 != "?" }
+        // Everything up to the query string, which carries `?si=` share tokens, or a fragment
+        // or a trailing path.
+        let id = trimmed[range.upperBound...].prefix { $0 != "?" && $0 != "/" && $0 != "#" }
         return id.isEmpty ? nil : String(id)
     }
 }

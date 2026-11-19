@@ -49,7 +49,7 @@ struct PlayerModelTests {
         let model = PlayerModel()
         var snapshot = cluster(active: "mac", revision: 1)
         snapshot.playback = PlaybackState(
-            isPlaying: true, isPaused: false, trackUri: "spotify:track:a", positionMs: 1000,
+            isPlaying: true, trackUri: "spotify:track:a", positionMs: 1000,
             durationMs: 2000, shuffle: false, repeatTrack: false, repeatContext: false, timestampMs: 1,
         )
         model.apply(snapshot)
