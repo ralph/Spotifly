@@ -70,7 +70,7 @@ private struct GeneralSettingsView: View {
 
 // MARK: - Playback
 
-/// What plays on this Mac: Spotify's Soloist, the only player, whose one setting here is its key.
+/// What plays on this Mac: Spotify's Soloist, the only player, and its key.
 private struct PlaybackSettingsView: View {
     var body: some View {
         Form {
@@ -82,10 +82,12 @@ private struct PlaybackSettingsView: View {
 }
 
 /// Spotify's Soloist as this Mac's player: the key, the download, and where it stands
-/// (`SoloistEngine`). Once set up, the key can be changed, which restarts Soloist with it.
+/// (`SoloistEngine`). Once set up, the key shows as saved, never as itself, and Change opens
+/// the field again: a new key restarts Soloist with it.
 private struct SoloistSection: View {
     @AppStorage(SoloistEngine.setUpKey) private var isSetUp = false
     @State private var key = ""
+    @State private var isChangingKey = false
     private let engine = SoloistEngine.shared
 
     var body: some View {
@@ -96,22 +98,45 @@ private struct SoloistSection: View {
                         .foregroundStyle(isFailed ? .red : .secondary)
                 }
             }
-            SecureField("soloist.key", text: $key)
-            HStack {
-                Link("soloist.get_key", destination: URL(string: "https://developer.spotify.com/dashboard/soloist")!)
-                Spacer()
-                Button(isSetUp ? "soloist.change_key" : "soloist.use") {
-                    let entered = key
-                    key = ""
-                    Task { await engine.choose(key: entered) }
+            if !editsKey {
+                LabeledContent("soloist.key") {
+                    HStack {
+                        Text("soloist.key_saved")
+                            .foregroundStyle(.secondary)
+                        Button("soloist.edit_key") { isChangingKey = true }
+                    }
                 }
-                .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+            } else {
+                SecureField("soloist.key", text: $key)
+                HStack {
+                    Link("soloist.get_key", destination: URL(string: "https://developer.spotify.com/dashboard/soloist")!)
+                    Spacer()
+                    if isChangingKey {
+                        Button("action.cancel") {
+                            key = ""
+                            isChangingKey = false
+                        }
+                    }
+                    Button(isSetUp ? "soloist.change_key" : "soloist.use") {
+                        let entered = key
+                        key = ""
+                        isChangingKey = false
+                        Task { await engine.choose(key: entered) }
+                    }
+                    .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
             }
         } header: {
             Text(verbatim: "Spotify Soloist")
         } footer: {
             Text("soloist.footer")
         }
+    }
+
+    /// The field shows until a key is set up, while the user changes it, and while Soloist has
+    /// failed, since its errors ask for the key again.
+    private var editsKey: Bool {
+        !isSetUp || isChangingKey || isFailed
     }
 
     private var isFailed: Bool {
