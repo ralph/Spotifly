@@ -126,7 +126,6 @@
 "error.load_playlists" = "Failed to load playlists";
 "error.load_albums" = "Failed to load albums";
 "error.load_artists" = "Failed to load artists";
-"error.player_not_ready" = "The player did not connect to Spotify in time";
 "error.player_not_initialized" = "The player is not connected to Spotify";
 "error.album_not_found" = "Spotify can't find this album. It may not be available in your country.";
 "error.artist_not_found" = "Spotify can't find this artist.";

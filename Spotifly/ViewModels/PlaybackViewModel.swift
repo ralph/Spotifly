@@ -237,8 +237,6 @@ final class PlaybackViewModel {
         initialInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
         initialInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
-
-        startReadinessCheck()
     }
 
     /// Tears down and rebuilds the player even if it is already initialized.
@@ -266,11 +264,10 @@ final class PlaybackViewModel {
     /// clearing the auth state, so no login can start a rebuild until this has returned.
     func shutdownForLogout() async {
         // Invalidate an initialization in flight without waiting for it and without
-        // cancelling it. Waiting would hang the logout behind a stalled network setup;
-        // cancelling would be worse than useless, because `waitUntilReady` swallows it and
-        // would then spin on the main actor until its timeout. The run is left in place so a
-        // replacement login still serializes behind it — it just no longer owns the outcome,
-        // and tears down whatever it built once it notices the generation moved.
+        // cancelling it. Waiting would hang the logout behind a stalled network setup. The run
+        // is left in place so a replacement login still serializes behind it — it just no
+        // longer owns the outcome, and tears down whatever it built once it notices the
+        // generation moved.
         if let existing = logoutTask {
             await existing.value
             return
@@ -361,18 +358,15 @@ final class PlaybackViewModel {
         do {
             try await SpotifyPlayer.initialize()
 
-            // Readiness is the authoritative condition, not "initialize() returned". The
-            // old code set isInitialized as soon as `initialize()` returned and then polled
-            // Spirc while ignoring the timeout, so Swift could permanently believe the
-            // player was up while every Connect command failed — and initializeIfNeeded
-            // would then refuse to try again. Leaving the flag false on timeout means the
-            // next caller retries.
-            if await waitUntilReady() {
-                isInitialized = true
+            // The client publishes the connected session before it returns, so this reads
+            // what it built. A session that dropped since leaves the flag false, so the next
+            // caller retries, and the client's recovery is adopted if it gets there first
+            // (`adoptConnectedSession`).
+            isInitialized = SpotifyPlayer.isSessionConnected
+            if isInitialized {
                 errorMessage = nil
             } else {
-                debugLog("PlaybackViewModel", "Player did not become ready within \(Self.readinessTimeout)")
-                errorMessage = String(localized: "error.player_not_ready")
+                debugLog("PlaybackViewModel", "Session dropped before initialization returned")
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -411,21 +405,6 @@ final class PlaybackViewModel {
         shown = nil
         updateNowPlayingInfo()
         anchorPosition(0)
-    }
-
-    /// How long to wait for the player to become usable after initialization.
-    private static let readinessTimeout: Duration = .seconds(5)
-
-    /// Polls until the client reports a connected session, or the timeout expires.
-    private func waitUntilReady() async -> Bool {
-        let deadline = ContinuousClock.now + Self.readinessTimeout
-        while ContinuousClock.now < deadline {
-            if SpotifyPlayer.isSessionConnected {
-                return true
-            }
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        return SpotifyPlayer.isSessionConnected
     }
 
     /// Where a play request should go.
@@ -1199,8 +1178,7 @@ final class PlaybackViewModel {
     }
 
     /// Takes a session the client brought up on its own as this model's, rather than
-    /// rebuilding it: a recovery after an explicit initialization failed. Reads the client
-    /// itself, since the snapshot that says it is up can still be on its way.
+    /// rebuilding it: a recovery after an explicit initialization failed.
     ///
     /// Do not clear `isInitialized` on a not-ready snapshot: a transient disconnect belongs
     /// to `LibrespotClient`'s auto-recovery, and clearing it would make the next user
@@ -1222,19 +1200,11 @@ final class PlaybackViewModel {
         errorMessage = nil
     }
 
-    /// Brings `isConnectionReady` in line with the client, freezing the position when it drops.
-    ///
-    /// Reads the live flags rather than trusting the delivered snapshot, which may already
-    /// be stale by the time it arrives.
-    ///
-    /// Called on every connection change *and* once a second (`startReadinessCheck`).
-    /// The second caller is deliberate: display interpolation depends on this flag, so a
-    /// single missed callback would leave the progress bar stopped during healthy playback.
-    /// Re-reading the flags on the timer makes that self-heal within a second, and routing
-    /// both callers through here means the timer can never flip the flag without also
-    /// freezing the position.
+    /// Brings `isConnectionReady` in line with the player model's connection, freezing the
+    /// position when it drops. Called on every change of it, which the snapshot stream never
+    /// drops: a consumer that falls behind gets the newest snapshot, not none.
     private func syncConnectionReadiness() {
-        let isReady = SpotifyPlayer.isSessionConnected
+        let isReady = player.connection?.isConnected == true
         guard isReady != isConnectionReady else { return }
 
         // The position arrives over the session, so it holds while the session is down.
@@ -1344,7 +1314,6 @@ final class PlaybackViewModel {
     // UI reads interpolatedPositionMs (computed)
     private var positionAnchorMs: UInt32 = 0
     private var positionAnchorTime: Double = PlaybackViewModel.positionClockNow()
-    private var readinessCheck: Task<Void, Never>?
 
     /// Now, in seconds, on the clock that every anchor time is read from and compared with.
     ///
@@ -1469,22 +1438,6 @@ final class PlaybackViewModel {
     /// The unknown case is what makes a track change safe; see `ShownPlayback.durationMs`.
     private func clampedToTrack(_ positionMs: UInt32) -> UInt32 {
         trackDurationMs > 0 ? min(positionMs, trackDurationMs) : positionMs
-    }
-
-    /// Re-reads the session's readiness once a second for the lifetime of the view model.
-    ///
-    /// Readiness gates interpolation, so this recovers from a callback that never arrived
-    /// rather than leaving the progress bar stopped until the next one does. The position
-    /// itself is the cluster's alone (`handlePlaybackStateUpdate`): there is no player here to
-    /// check it against.
-    private func startReadinessCheck() {
-        readinessCheck = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled, let self else { return }
-                syncConnectionReadiness()
-            }
-        }
     }
 
     // MARK: - Favorite Management

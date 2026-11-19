@@ -126,7 +126,6 @@
 "error.load_playlists" = "Impossible de charger les playlists";
 "error.load_albums" = "Impossible de charger les albums";
 "error.load_artists" = "Impossible de charger les artistes";
-"error.player_not_ready" = "Le lecteur ne s'est pas connecté à Spotify à temps";
 "error.player_not_initialized" = "Le lecteur n'est pas connecté à Spotify";
 "error.album_not_found" = "Album introuvable. Il n'est peut-être pas disponible dans votre pays.";
 "error.artist_not_found" = "Artiste introuvable.";
