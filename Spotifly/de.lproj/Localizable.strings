@@ -332,6 +332,8 @@
 "soloist.set_up_message" = "Dieser Mac spielt über Spotifys Soloist, den du einmal in den Einstellungen einrichtest. Bis dahin starte die Wiedergabe auf einem anderen Gerät.";
 "soloist.open_settings" = "Einstellungen öffnen";
 "soloist.change_key" = "Diesen Key verwenden";
+"soloist.key_saved" = "Gespeichert";
+"soloist.edit_key" = "Ändern …";
 "speakers.set_up_soloist" = "Soloist einrichten, um auf diesem Mac zu spielen";
 "soloist.error.download %lld" = "Spotifys Download-Server antwortete mit %lld.";
 "soloist.error.unpack" = "Soloist ließ sich nicht entpacken oder starten.";
