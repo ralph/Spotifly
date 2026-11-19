@@ -1,8 +1,9 @@
 # CPU benchmark: librespot (1.2.7) and the Swift stack
 
-**Obsolete.** This measured Spotifly's built-in player, which is gone: Spotify's Soloist now
-plays, in its own process, which `measure.sh` does not count. The decoder in `micro/` and the
-renderer in `renderer/` no longer exist, so those scripts do not run.
+**Obsolete.** This measured Spotifly's built-in player, which was removed in #232. Spotify's
+Soloist now plays, in its own process. The scripts in `docs/cpu-benchmark/` were removed with
+the player; git history has them (`git log -- docs/cpu-benchmark`). This file stays as the
+record of what was measured.
 
 Measured on 2026-09-27, to see where Spotifly's CPU goes on the `swift-librespot`
 branch and how that compares with the last release built on librespot. Nothing like
@@ -42,7 +43,7 @@ cost down by another third, to no idle wakeups at all. See
 
 ## Method
 
-[`cpu-benchmark/measure.sh`](cpu-benchmark/measure.sh) `<label>`, once playback or the
+`cpu-benchmark/measure.sh <label>`, once playback or the
 pause has settled:
 
 1. **CPU:** 60 s of CPU time from `ps`, for the app and for `coreaudiod`. This is the
@@ -51,11 +52,11 @@ pause has settled:
    so the rate is their difference over 30 s.
 3. **Where it goes:** a 30 s Time Profiler trace attached with `xctrace`, exported
    and summed by thread, binary and function by
-   [`cpu-benchmark/aggregate.py`](cpu-benchmark/aggregate.py) (`THREAD=<name>`
+   `cpu-benchmark/aggregate.py` (`THREAD=<name>`
    narrows it to one thread). The trace's totals came out anywhere from 30% below to 80%
    above the `ps` figure for the same run, so use it for the split, not the level.
 
-[`cpu-benchmark/micro/run.sh`](cpu-benchmark/micro/run.sh) times the decoder and the
+`cpu-benchmark/micro/run.sh` times the decoder and the
 decryption on their own.
 
 Things that bit:
@@ -143,7 +144,7 @@ software implementation manages a few hundred MB/s). A whole track decrypts in a
 
 ### Feeding the renderer
 
-[`renderer/run.sh`](cpu-benchmark/renderer/run.sh) `[<git revision>] [pause]` builds the
+`cpu-benchmark/renderer/run.sh [<git revision>] [pause]` builds the
 app's `AudioRenderer.swift`, from the working tree or from a revision, into a small
 program that plays -120 dB noise through it, fed the way the pipeline feeds it
 (`legacy.swift` drives revisions from before the receiver), and reports the 60 s after a

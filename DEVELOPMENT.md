@@ -99,15 +99,17 @@ Three things to know about signing in:
   client id, and rotates it on every refresh. Anything else signed in with the same
   client id — Spotifly on another Mac, a probe — revokes this one's when it refreshes, and
   the app then signs out.
-- **Release and development builds share a data container.** A Developer ID build and a
-  locally signed one have different signatures, so whichever runs second makes macOS ask
-  whether it may use the other's data, and it sits waiting on that alert.
+- **Release and development builds share their data.** The app is not sandboxed, and both
+  builds have the bundle id `rvdh.Spotifly`. So they use the same folder,
+  `~/Library/Application Support/Spotifly/`, and the same preferences,
+  `~/Library/Preferences/rvdh.Spotifly.plist`. They also share the keychain items. A
+  Developer ID build and a locally signed one have different signatures, so macOS can ask
+  whether one may read the item the other wrote. The app waits until someone answers.
 - **Soloist signs in on its own**, through Connect pairing: choose "Spotifly" once in the
   Spotify app on a phone on the same network. It keeps that login in its data folder,
   `~/Library/Application Support/Spotifly/Soloist/`.
 
 ## Performance
 
-[`docs/cpu-benchmark.md`](docs/cpu-benchmark.md) records where the CPU went while
-playing and while paused with the built-in player, which is gone. Soloist now plays in its
-own process.
+[`docs/cpu-benchmark.md`](docs/cpu-benchmark.md) records CPU measurements of the removed
+built-in player. Its scripts are in git history.

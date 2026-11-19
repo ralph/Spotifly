@@ -1,5 +1,10 @@
 # Handoff: Spotifly — native macOS client (SwiftUI)
 
+> **Historical.** This is design input from before Soloist. The visual design still applies.
+> The architecture and feature notes do not: Spotifly no longer uses the Web API, Spotify's
+> Soloist plays instead of librespot, and there is no AirPlay picker and no quality setting.
+> `DEVELOPMENT.md` describes the app as it is.
+
 ## Overview
 A native macOS Spotify client ("Spotifly") built on the Spotify Web API for metadata/control and Librespot for audio. The design uses standard SwiftUI controls throughout. The one exception is the floating player bar, which is a custom layout assembled from standard Buttons and Sliders. The UI language is German.
 
