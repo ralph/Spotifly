@@ -8,7 +8,7 @@
 import SwiftUI
 
 /// The connection to Spotify as form rows: a status with a dot and how long it has held, the
-/// session's details under a disclosure, and Reconnect.
+/// device id and the last error, and Reconnect.
 struct ConnectionSection: View {
     @Environment(PlayerModel.self) private var player
     var onReconnect: (@Sendable () async -> Void)?
@@ -34,19 +34,17 @@ struct ConnectionSection: View {
                     }
                 }
 
-                DisclosureGroup("connection.details") {
-                    if let deviceId = connection.deviceId {
-                        LabeledContent("connection.device_id") {
-                            Text(verbatim: deviceId)
-                                .monospaced()
-                                .textSelection(.enabled)
-                        }
+                if let deviceId = connection.deviceId {
+                    LabeledContent("connection.device_id") {
+                        Text(verbatim: deviceId)
+                            .monospaced()
+                            .textSelection(.enabled)
                     }
-                    if let lastError = connection.lastError {
-                        LabeledContent("connection.last_error") {
-                            Text(verbatim: lastError)
-                                .textSelection(.enabled)
-                        }
+                }
+                if let lastError = connection.lastError {
+                    LabeledContent("connection.last_error") {
+                        Text(verbatim: lastError)
+                            .textSelection(.enabled)
                     }
                 }
 

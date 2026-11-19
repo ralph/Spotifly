@@ -275,7 +275,6 @@
 "connection.connected" = "Connected";
 "connection.disconnected" = "Disconnected";
 "connection.connected_for %@" = "Connected for %@";
-"connection.details" = "Details";
 "connection.last_error" = "Last Error";
 "connection.reconnect_hint" = "Only needed when playback is stuck.";
 

@@ -275,7 +275,6 @@
 "connection.connected" = "Verbunden";
 "connection.disconnected" = "Getrennt";
 "connection.connected_for %@" = "Verbunden seit %@";
-"connection.details" = "Details";
 "connection.last_error" = "Letzter Fehler";
 "connection.reconnect_hint" = "Nur nötig, wenn die Wiedergabe hängt.";
 
