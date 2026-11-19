@@ -2,9 +2,9 @@
 
 Status: **Open**. Agreed on 2026-11-19: all in on Soloist ("Decisions of 2026-11-19" below).
 Done: leaving the App Sandbox (#228, decided 2026-11-05) and Soloist as this Mac's player with
-AirPlay removed (#229, merged as `ed6f710`), both checked live on 2026-11-19. Still open:
-queue editing while Soloist plays (decision 4), Free accounts, an inline track list and an
-expired build checked live, and removing the built-in player. Researched 2026-11-02 against
+AirPlay removed (#229, merged as `ed6f710`), and a session without the accesspoint while
+Soloist plays (#231), all checked live on 2026-11-19. Decision 4 needed nothing. Still open:
+a Free account checked live, and removing the built-in player. Researched 2026-11-02 against
 Soloist 1.3.10.35 (macOS build of 2026-11-02); Spotifast's setup and the Homebrew cask checked
 2026-11-03 (1.3.10.37, built that day); built against 1.3.10.85 (2026-11-19).
 Components: `Spotifly/Soloist/SoloistEngine.swift`, `Spotifly/Soloist/SoloistInstaller.swift`,
@@ -387,10 +387,9 @@ Ralph decided to go all in on Soloist, as fast as possible:
    Soloist: pause, resume, seek, skips, volume, queue add and `skip_next` to a row (probe 4);
    shuffle, repeat and song radio as `spotify:station:track:…` (2026-11-19). The WebSocket is
    used only for pairing state.
-4. **Queue editing while Soloist plays: still open.** Soloist has no remove or reorder.
-   Either hide these controls, as Spotifast does, or try connect-state's queue writes on
-   Soloist's device. #229 left the controls as they are for any other device; nothing has
-   checked them on Soloist.
+4. **Queue editing while Soloist plays: nothing to decide** (2026-11-19). Spotifly offers no
+   removing or reordering of the queue, with either player: its queue view plays a row, and
+   the only edit is adding, which works on Soloist (probe 4). Nothing needs hiding.
 5. **Two Connect devices: decided and built** (#229). Spotifly's own session registers its
    device hidden and not playable while Soloist is chosen (`SpotifyPlayer.initialize` passes
    `playsHere: false`), through the path an account that cannot stream already took. The
@@ -410,10 +409,11 @@ build:
    Spotifly, which sends the row's index, kept the context's order (2026-11-19).
 4. Soloist with the Mac's output on the HomePod: not run. AirPlay is the system's now
    (decision 2).
-5. A Free account: not run, none at hand. The accesspoint refuses a Free account's login, so
-   Spotifly has no session to command Soloist from.
+5. A Free account: not run, none at hand. The accesspoint refuses a Free account's login.
+   Since #231 a session for Soloist connects no accesspoint, so nothing refuses it any more;
+   whether Soloist plays for a Free account is still only what its README says.
 
-An inline track list moves to the manual run after implementation.
+An inline track list moved to the manual run after implementation.
 
 ### Step 2: leaving the sandbox (manual, with a release-signed build)
 
@@ -462,8 +462,10 @@ signature check decides what runs (Implementation notes).
 Manual run (#229, 2026-11-19):
 - setup from a clean state: done (download, signature check, pairing from the phone);
 - pairing, then a restart that restores the session: done;
-- a play from a row in a playlist: done, in order; an inline track list: not run;
-- an expired build (exit code 10): not run;
+- a play from a row in a playlist: done, in order; an inline track list: done (#231), the
+  start page's top tracks from the clicked one;
+- an expired build: done (#231) by aging `build.json` by 91 days, which made Spotifly download
+  Soloist again; exit code 10 itself was not provoked;
 - killing the child: done, while paused rather than mid-track. It restarted after two
   seconds with the app idle.
 
@@ -526,3 +528,14 @@ design above, and what it found:
   must remove itself there; before that fix, every exit of Soloist left one core busy.
 - **The device name is "Spotifly".** Spotifly's own session device is hidden while Soloist
   is chosen, so the name is free.
+
+**No accesspoint while Soloist plays** (PR #231, 2026-11-19):
+
+- The accesspoint is the built-in player's channel: its login, the account type, the audio keys
+  and the country code. A session whose device does not play here connects none, and the
+  dealer and Spirc work with the keymaster token alone. Checked live: no `Accesspoint` line in
+  the log, the session up in 150 ms, plays and pause over connect-state as before.
+- Nothing else needed it. Its Mercury events were dropped unread, and `SpircController` held
+  a reference it never called.
+- So the accesspoint's refusal of an account without Premium no longer stands between such an
+  account and Soloist. Not checked with a Free account.
