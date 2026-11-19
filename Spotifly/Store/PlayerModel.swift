@@ -83,14 +83,20 @@ final class PlayerModel {
         activeDeviceId == ownDeviceId ? nil : activeDeviceId
     }
 
-    /// This Mac's Connect id.
+    /// This Mac's Connect id: the session's own device, which commands are sent from.
     var ownDeviceId: String? {
         connection?.deviceId
     }
 
-    /// Whether this Mac is the active device.
+    /// The device that plays for this Mac: Spotify's Soloist once chosen (`SoloistEngine`),
+    /// whose session device is hidden then; the session's own device otherwise.
+    var thisMacDeviceId: String? {
+        SoloistEngine.isChosen ? SoloistEngine.shared.deviceId : ownDeviceId
+    }
+
+    /// Whether this Mac plays: its player is the active device.
     var isPlayingHere: Bool {
-        activeDeviceId != nil && activeDeviceId == ownDeviceId
+        activeDeviceId != nil && activeDeviceId == thisMacDeviceId
     }
 
     /// Adopts a snapshot. Each part is written only when it changed, so what

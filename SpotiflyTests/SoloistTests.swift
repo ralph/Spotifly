@@ -46,36 +46,32 @@ struct SoloistBuildTests {
 }
 
 struct SoloistEventTests {
-    /// Messages `soloist ctl trace` recorded from Soloist 1.3.10.37 on 2026-11-09.
-    @Test func `pairing and activity are read from the socket`() throws {
-        let waiting = try #require(SoloistEvent(
-            json: #"{"type":"auth_state","logged_in":false,"is_active":false,"device_name":"Spotifly Soloist Test"}"#,
-        ))
-        let active = try #require(SoloistEvent(
-            json: #"{"type":"device_changed","is_active":true,"device_name":"Spotifly Soloist Test"}"#,
-        ))
-        let progress = try #require(SoloistEvent(
-            json: #"{"type":"position_sync","position":{"position_ms":0,"timestamp_ms":1794212158391,"speed":1}}"#,
-        ))
+    private func event(_ json: String) throws -> SoloistEvent {
+        try JSONDecoder().decode(SoloistEvent.self, from: Data(json.utf8))
+    }
 
-        #expect(waiting == SoloistEvent(type: "auth_state", loggedIn: false, isActive: false))
-        #expect(active == SoloistEvent(type: "device_changed", loggedIn: nil, isActive: true))
-        #expect(progress == SoloistEvent(type: "position_sync", loggedIn: nil, isActive: nil))
-        #expect(SoloistEvent(json: "not json") == nil)
+    /// Messages `soloist ctl trace` recorded from Soloist 1.3.10.37 on 2026-11-09.
+    @Test func `pairing is read from the socket`() throws {
+        let waiting = try event(
+            #"{"type":"auth_state","logged_in":false,"is_active":false,"device_name":"Spotifly Soloist Test"}"#,
+        )
+        let active = try event(#"{"type":"device_changed","is_active":true,"device_name":"Spotifly Soloist Test"}"#)
+
+        #expect(waiting == SoloistEvent(loggedIn: false))
+        #expect(active == SoloistEvent(loggedIn: nil))
     }
 
     @MainActor
     @Test func `the engine is ready once Soloist is paired`() {
         let engine = SoloistEngine.shared
-        engine.apply(SoloistEvent(type: "auth_state", loggedIn: false, isActive: false))
+        engine.apply(SoloistEvent(loggedIn: false))
         #expect(engine.status == .waitingForPairing)
 
-        engine.apply(SoloistEvent(type: "auth_state", loggedIn: true, isActive: false))
-        #expect(engine.status == .ready)
-        #expect(!engine.isActive)
+        engine.apply(SoloistEvent(loggedIn: nil))
+        #expect(engine.status == .waitingForPairing)
 
-        engine.apply(SoloistEvent(type: "device_changed", loggedIn: nil, isActive: true))
-        #expect(engine.isActive)
+        engine.apply(SoloistEvent(loggedIn: true))
+        #expect(engine.status == .ready)
     }
 }
 

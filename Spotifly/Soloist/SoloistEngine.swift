@@ -12,9 +12,9 @@ import Foundation
 ///
 /// Soloist is a Spotify Connect receiver that plays with Spotify's own engine and needs no audio
 /// keys. Spotifly starts it, and controls it like any other Connect device: plays and commands
-/// go over connect-state, and what it plays comes back in the cluster. Its loopback WebSocket
-/// only says what the cluster cannot: whether it runs, whether it is paired, whether it is
-/// active. Spotifly's own Connect device then registers hidden (`LibrespotClient`), so the
+/// go over connect-state, and what it plays, and whether it is active, comes back in the
+/// cluster. Its loopback WebSocket only says what the cluster cannot: whether it is paired.
+/// Spotifly's own Connect device then registers hidden (`SpotifyPlayer.initialize`), so the
 /// account sees one device for this Mac, named `deviceName`.
 ///
 /// `plans/open/soloist-playback.md` has the research behind it.
@@ -35,19 +35,15 @@ final class SoloistEngine {
 
     private(set) var status: Status = .off
 
-    /// Whether Soloist is the active Connect device, as its socket says.
-    private(set) var isActive = false
-
     /// Soloist's Connect device id, which the cluster lists it by.
     private(set) var deviceId: String?
 
     /// The name the account's device lists show for this Mac.
     static let deviceName = "Spotifly"
 
-    private nonisolated static let chosenKey = "soloistEngine"
+    /// Whether the user chose Soloist as this Mac's player, in `UserDefaults`.
+    nonisolated static let chosenKey = "soloistEngine"
 
-    /// Whether the user chose Soloist as this Mac's player. Read off the main actor by the
-    /// client when it registers this Mac's own device.
     nonisolated static var isChosen: Bool {
         UserDefaults.standard.bool(forKey: chosenKey)
     }
@@ -130,8 +126,6 @@ final class SoloistEngine {
             status = .starting
             await stopLeftoverChild()
             try launch(executable, key: key)
-            deviceId = try? String(contentsOf: Self.data.appending(path: ".device_id"), encoding: .utf8)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
             try await connectSocket()
         } catch {
             debugLog("Soloist", "Start failed: \(error)")
@@ -160,17 +154,17 @@ final class SoloistEngine {
     private func launch(_ executable: URL, key: String) throws {
         try? FileManager.default.removeItem(at: Self.data.appending(path: "ws.port"))
 
-        let volume = UserDefaults.standard.object(forKey: "playbackVolume") as? Double ?? 0.5
         let process = Process()
         process.executableURL = executable
         // The key can only be passed as an argument (soloist#12): `ps` shows it to local users.
+        // `-i` is the volume of Soloist's very first start; afterwards it keeps its own.
         process.arguments = [
             "-n", Self.deviceName,
             "-k", key,
             "-D", Self.data.path,
             "-C", Self.root.appending(path: "cache").path,
             "-z", "512",
-            "-i", String(Int((volume * 100).rounded())),
+            "-i", String(Int((PlaybackViewModel.savedVolume * 100).rounded())),
             "-w", "127.0.0.1:0",
         ]
         process.standardInput = FileHandle.nullDevice
@@ -207,7 +201,6 @@ final class SoloistEngine {
         process = nil
         socket?.cancel()
         socket = nil
-        isActive = false
 
         if exitStatus == 10 {
             try? FileManager.default.removeItem(at: Self.root.appending(path: "build.json"))
@@ -230,7 +223,6 @@ final class SoloistEngine {
     func stop() async {
         socket?.cancel()
         socket = nil
-        isActive = false
         guard let process else { return }
         self.process = nil
         process.terminate()
@@ -264,21 +256,19 @@ final class SoloistEngine {
         let portFile = Self.data.appending(path: "ws.port")
         var port: Int?
         for _ in 0 ..< 100 where process != nil {
-            if let text = try? String(contentsOf: portFile, encoding: .utf8),
-               let value = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
-            {
-                port = value
-                break
+            if let text = try? String(contentsOf: portFile, encoding: .utf8) {
+                port = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                if port != nil {
+                    break
+                }
             }
             try await Task.sleep(for: .milliseconds(100))
         }
         guard let port, let url = URL(string: "ws://127.0.0.1:\(port)") else {
             throw SoloistInstaller.Failure.unpack
         }
-        if deviceId == nil {
-            deviceId = try? String(contentsOf: Self.data.appending(path: ".device_id"), encoding: .utf8)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        deviceId = try? String(contentsOf: Self.data.appending(path: ".device_id"), encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let socket = URLSession.shared.webSocketTask(with: url)
         socket.maximumMessageSize = 4 * 1024 * 1024
         socket.resume()
@@ -288,46 +278,28 @@ final class SoloistEngine {
 
     private func listen(to socket: URLSessionWebSocketTask) async {
         while let message = try? await socket.receive() {
-            guard case let .string(text) = message, let event = SoloistEvent(json: text) else { continue }
+            guard case let .string(text) = message,
+                  let event = try? JSONDecoder().decode(SoloistEvent.self, from: Data(text.utf8))
+            else { continue }
             apply(event)
         }
         debugLog("Soloist", "Socket closed")
     }
 
     func apply(_ event: SoloistEvent) {
-        if let loggedIn = event.loggedIn {
-            status = loggedIn ? .ready : .waitingForPairing
-            if loggedIn {
-                restartsInARow = 0
-            }
-        }
-        if let active = event.isActive {
-            isActive = active
+        guard let loggedIn = event.loggedIn else { return }
+        status = loggedIn ? .ready : .waitingForPairing
+        if loggedIn {
+            restartsInARow = 0
         }
     }
 }
 
-/// The part of a Soloist socket message the engine reads: `auth_state` says whether it is
-/// paired, and it and `device_changed` and `playback_state` say whether it is active.
+/// The part of a Soloist socket message the engine reads: `auth_state` says whether it is paired.
 nonisolated struct SoloistEvent: Decodable, Equatable {
-    let type: String
     let loggedIn: Bool?
-    let isActive: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case type
         case loggedIn = "logged_in"
-        case isActive = "is_active"
-    }
-
-    init?(json: String) {
-        guard let event = try? JSONDecoder().decode(Self.self, from: Data(json.utf8)) else { return nil }
-        self = event
-    }
-
-    init(type: String, loggedIn: Bool?, isActive: Bool?) {
-        self.type = type
-        self.loggedIn = loggedIn
-        self.isActive = isActive
     }
 }

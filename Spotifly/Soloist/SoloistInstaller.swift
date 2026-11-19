@@ -10,7 +10,7 @@ import Security
 
 /// The Soloist build on this Mac. Spotify forbids shipping it inside the app, so it is
 /// downloaded from Spotify's CDN, and every build stops starting 90 days after its build date.
-nonisolated struct SoloistBuild: Codable, Equatable, Sendable {
+nonisolated struct SoloistBuild: Codable, Sendable {
     let version: String
     /// The build date `--version` names; the build expires 90 days after it.
     let built: Date

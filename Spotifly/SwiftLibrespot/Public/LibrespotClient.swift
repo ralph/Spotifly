@@ -43,6 +43,11 @@ public actor LibrespotClient {
     /// album. A handover names its row by uid, and pathfinder's album answer has them.
     private var contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])?
 
+    /// Whether this session plays here. Not while Spotify's Soloist plays for this Mac: the
+    /// session then only watches and commands, and its device registers hidden, as one that
+    /// cannot play does.
+    private var playsHere = true
+
     /// Whether this Mac may play for the account, as the last login found.
     private var streams = true
 
@@ -148,11 +153,13 @@ public actor LibrespotClient {
         usernameProvider: @escaping @Sendable () async -> String?,
         contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])? = nil,
         volume: Double,
+        playsHere: Bool = true,
     ) async throws {
         logicalVolume = Self.logicalVolume(volume)
         self.httpCredentials = httpCredentials
         self.usernameProvider = usernameProvider
         self.contextRowUids = contextRowUids
+        self.playsHere = playsHere
         shuttingDown = false
         let generation = lifecycleGeneration
 
@@ -167,10 +174,8 @@ public actor LibrespotClient {
             throw LibrespotError.invalidState("Initialization superseded")
         }
 
-        // With Soloist chosen, Soloist plays for this Mac, and this session only watches and
-        // commands: its device registers hidden, as one that cannot play does.
         var registered = deviceInfo
-        registered.supportsPlayback = deviceInfo.supportsPlayback && !SoloistEngine.isChosen
+        registered.supportsPlayback = deviceInfo.supportsPlayback && playsHere
         let newSession = LibrespotSession(deviceInfo: registered)
         session = newSession
         subscribeToSession(newSession)

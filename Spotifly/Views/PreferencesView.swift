@@ -110,7 +110,7 @@ private struct PlaybackSettingsView: View {
 /// Spotify's Soloist as this Mac's player: the key, the download, and where it stands
 /// (`SoloistEngine`).
 private struct SoloistSection: View {
-    @AppStorage("soloistEngine") private var isChosen = false
+    @AppStorage(SoloistEngine.chosenKey) private var isChosen = false
     @State private var key = ""
     private let engine = SoloistEngine.shared
 
@@ -156,7 +156,7 @@ private struct SoloistSection: View {
         case .installing: String(localized: "soloist.status.installing")
         case .starting: String(localized: "soloist.status.starting")
         case .waitingForPairing: String(localized: "soloist.status.pairing")
-        case .ready where engine.isActive: String(localized: "soloist.status.playing")
+        case .ready where PlayerModel.shared.isPlayingHere: String(localized: "soloist.status.playing")
         case .ready: String(localized: "soloist.status.ready")
         case let .failed(message): message
         }

@@ -143,6 +143,8 @@ enum SpotifyPlayer {
             usernameProvider: { await KeymasterSession.shared.username },
             contextRowUids: { uri in await albumRowUids(uri) },
             volume: volume,
+            // Spotify's Soloist plays for this Mac once chosen (`SoloistEngine`).
+            playsHere: !SoloistEngine.isChosen,
         )
     }
 

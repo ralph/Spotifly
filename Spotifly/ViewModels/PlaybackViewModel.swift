@@ -835,6 +835,14 @@ final class PlaybackViewModel {
             command = local
         } else if let route = connectRoute() {
             command = { try await remote(route.from, route.to) }
+        } else if SoloistEngine.isChosen {
+            // Nothing active, and Spotify's Soloist is this Mac's player: the command is its, as
+            // it would be the built-in player's otherwise, and nobody's while it is not ready.
+            guard case let .ready(deviceId) = soloistPlayer, let from = player.ownDeviceId else {
+                explain(.soloistNotReady)
+                return false
+            }
+            command = { try await remote(from, deviceId) }
         } else if SpotifyPlayer.isSessionConnected {
             // Nothing out there to command, so command ourselves. The playback state that
             // follows is reported to Spirc as this device being active, so the Connect role
@@ -896,10 +904,7 @@ final class PlaybackViewModel {
     /// source from the session, which is why librespot's transfer passes its own id for both
     /// sides — so this is an identifier for their logs rather than a routing decision.
     private func connectRoute() -> (from: String, to: String)? {
-        // With nothing active, a command goes to Soloist when it is this Mac's player, as it
-        // would go to this Mac's own player otherwise.
-        let active = player.activeDeviceId.flatMap { $0.isEmpty ? nil : $0 }
-        guard let to = active ?? SoloistEngine.shared.readyDeviceId,
+        guard let to = player.activeDeviceId, !to.isEmpty,
               let from = player.ownDeviceId, !from.isEmpty
         else { return nil }
 
@@ -1193,7 +1198,7 @@ final class PlaybackViewModel {
     /// takes it; the sleep stops that audio anyway.
     private func pauseFromMediaControls() {
         guard isPlaying else { return }
-        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: SpotifyPlayer.isActiveDevice) {
+        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: player.isPlayingHere) {
             debugLog("PlaybackViewModel", "Pause ignored: the Mac is going to sleep, and another device plays")
             return
         }
@@ -1800,7 +1805,7 @@ final class PlaybackViewModel {
     }
 
     /// This Mac's volume as it was last saved, or half when it never was.
-    private static var savedVolume: Double {
+    static var savedVolume: Double {
         let saved = UserDefaults.standard.double(forKey: "playbackVolume")
         return saved > 0 ? saved : 0.5
     }
