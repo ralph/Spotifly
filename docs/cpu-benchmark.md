@@ -1,5 +1,9 @@
 # CPU benchmark: librespot (1.2.7) and the Swift stack
 
+**Obsolete.** This measured Spotifly's built-in player, which is gone: Spotify's Soloist now
+plays, in its own process, which `measure.sh` does not count. The decoder in `micro/` and the
+renderer in `renderer/` no longer exist, so those scripts do not run.
+
 Measured on 2026-09-27, to see where Spotifly's CPU goes on the `swift-librespot`
 branch and how that compares with the last release built on librespot. Nothing like
 this had been recorded before: the only earlier figure is the changelog's relative

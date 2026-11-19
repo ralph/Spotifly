@@ -18,7 +18,7 @@ import Foundation
 /// Spotifly's own Connect device registers hidden (`SpotifyPlayer.initialize`), so the account
 /// sees one device for this Mac, named `deviceName`.
 ///
-/// `plans/open/soloist-playback.md` has the research behind it.
+/// `plans/done/soloist-playback.md` has the research behind it.
 @MainActor
 @Observable
 final class SoloistEngine {

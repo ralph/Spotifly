@@ -11,7 +11,7 @@ import Foundation
 /// Moves what the sandboxed app kept in its container to where the unsandboxed app looks.
 ///
 /// Spotifly ran in the App Sandbox until it started Spotify's Soloist, which a sandboxed app
-/// cannot run (`plans/open/soloist-playback.md`). Sandboxed, `UserDefaults` and Application
+/// cannot run (`plans/done/soloist-playback.md`). Sandboxed, `UserDefaults` and Application
 /// Support resolved into `~/Library/Containers/rvdh.Spotifly/Data`; now they resolve into the
 /// user's own `~/Library`. Without this, an upgraded Mac would start with default settings and
 /// a new Connect device id (`DeviceInfo`). Caches are left behind: they refill. The stored login

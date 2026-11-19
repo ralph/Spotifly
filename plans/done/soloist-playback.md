@@ -1,10 +1,11 @@
 # Spotify Soloist as the playback engine
 
-Status: **Open**. Agreed on 2026-11-19: all in on Soloist ("Decisions of 2026-11-19" below).
-Done: leaving the App Sandbox (#228, decided 2026-11-05) and Soloist as this Mac's player with
-AirPlay removed (#229, merged as `ed6f710`), and a session without the accesspoint while
-Soloist plays (#231), all checked live on 2026-11-19. Decision 4 needed nothing. Still open:
-a Free account checked live, and removing the built-in player. Researched 2026-11-02 against
+Status: **Done**, 2026-11-19. Agreed on 2026-11-19: all in on Soloist ("Decisions of
+2026-11-19" below). Leaving the App Sandbox (#228), Soloist as this Mac's player with AirPlay
+removed (#229), a session without the accesspoint (#231), and the built-in player removed
+(branch `soloist/remove-built-in-player`), all checked live on 2026-11-19. Decision 4 needed
+nothing. Unconfirmed: a Free account, Play with nothing active (a transfer to Soloist), and
+media keys over a long run. Researched 2026-11-02 against
 Soloist 1.3.10.35 (macOS build of 2026-11-02); Spotifast's setup and the Homebrew cask checked
 2026-11-03 (1.3.10.37, built that day); built against 1.3.10.85 (2026-11-19).
 Components: `Spotifly/Soloist/SoloistEngine.swift`, `Spotifly/Soloist/SoloistInstaller.swift`,
@@ -355,7 +356,8 @@ Ralph decided to go all in on Soloist, as fast as possible:
 - **AirPlay goes** (decision 2 below). Spotifly offers no AirPlay of its own while Soloist
   plays to the Mac's output.
 - **The built-in player stays for now**, as the fallback when Soloist is turned off. Removing
-  it is the last step, once Soloist has proven itself.
+  it is the last step, once Soloist has proven itself. Later the same day Ralph decided not to
+  wait ("Ja, ausbauen"); "Removing the built-in player" in the Implementation notes has it.
 
 ### Open decisions
 
@@ -539,3 +541,25 @@ design above, and what it found:
   a reference it never called.
 - So the accesspoint's refusal of an account without Premium no longer stands between such an
   account and Soloist. Not checked with a Free account.
+
+**Removing the built-in player** (branch `soloist/remove-built-in-player`, 2026-11-19):
+
+- Soloist is the only player. Without it set up, a play raises "Set Up Soloist" with a button
+  to Settings, and Speakers shows a row to the same place. Spotifly browses and controls
+  other devices as before.
+- Where plays go: a ready Soloist; else the active device, so a phone still plays while Soloist
+  starts; else "not ready" or "set up". Commands go to the active device; with none, Play hands
+  the last playback to Soloist with a connect-state transfer, and other commands go to its id.
+  The transfer path was not exercised live: a paused Soloist stays the active device.
+- The volume slider moves the active device and is disabled while none is. Soloist keeps its
+  own volume, so `-i` is gone.
+- Deleted: the accesspoint and stored login, audio keys, AES, Vorbis with the vendored libogg
+  and libvorbis, `AudioPipeline`, `AudioOutput`, the local queue with auto-advance and
+  autoplay, takeover and handover, answering commands addressed to this Mac, writing player
+  state, bitrate and gapless, and the in-app re-grant. About 75,000 lines, 63,000 of them the
+  codec. The suite went from 663 to 457 tests with the engine's tests.
+- Recovery is guarded by the session's own credentials marker, which logout clears; logout
+  still deletes an old stored-login keychain item, and the container migration deletes the old
+  credentials file instead of importing it.
+- Checked live: start without accesspoint, a playlist from row 3, pause and play, seek, volume,
+  adding to the queue, playing queue rows, pause.

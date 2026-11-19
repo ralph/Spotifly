@@ -157,7 +157,7 @@ The Release configuration includes:
 - **Code Signing**: Automatic with Developer ID
 - **Hardened Runtime**: Enabled
 - **App Sandbox**: Off since the change for Spotify's Soloist, which a sandboxed app cannot
-  start (`plans/open/soloist-playback.md`). The first launch moves what the app kept in the
+  start (`plans/done/soloist-playback.md`). The first launch moves what the app kept in the
   old container out of it (`ContainerMigration`)
 
 ### Code Signing and Notarization
@@ -171,8 +171,8 @@ This ensures users don't see Gatekeeper warnings when opening the app.
 
 ### Dependencies
 
-Nothing needs building before the Archive. The app is Swift throughout, plus the vendored
-libogg and libvorbis sources that Xcode compiles with the rest of the target.
+Nothing needs building before the Archive. The app is Swift throughout. Soloist is not in
+the bundle: the app downloads it from Spotify when the user sets it up.
 
 ## Notes
 

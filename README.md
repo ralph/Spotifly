@@ -31,12 +31,13 @@ brew install ralph/spotifly/spotifly
 
 - macOS 27 or later
 - Spotify Premium account
+- A Soloist key from Spotify, to play on this Mac
 
 ## Features
 
 - Lightweight and fast
 - Native macOS app built with SwiftUI
-- A real Spotify Connect device — play here, or drive your phone and speakers from here
+- Plays on this Mac through Spotify's own Soloist player, and drives your phone and speakers over Spotify Connect
 - Your library: playlists, albums, followed artists and liked songs
 - Queue management with drag-and-drop reordering
 - Playback controls
@@ -49,7 +50,16 @@ brew install ralph/spotifly/spotifly
 2. Click **Connect with Spotify**
 3. Authorize Spotifly in the browser tab that opens
 
-That is the whole setup: the one authorization both signs you in and makes this Mac available as a Spotify Connect device.
+That signs you in. You can browse, and play on your other Spotify Connect devices, from here.
+
+## Playing on This Mac
+
+Spotifly plays through Soloist, Spotify's own player. Spotifly downloads it from Spotify and runs it. Set it up once:
+
+1. Open **Settings → Playback**
+2. Click **Get a Key from Spotify**, and create a key on Spotify's Soloist dashboard
+3. Paste the key, and click **Download and Use**
+4. In the Spotify app on your phone, on the same network, choose **Spotifly** once
 
 ## Keyboard Shortcuts
 
@@ -79,10 +89,10 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for build instructions and architecture doc
 
 ## Acknowledgements
 
-Spotifly's playback and Spotify Connect are written in Swift, following the protocol work
-of [librespot](https://github.com/librespot-org/librespot).
-Ogg Vorbis decoding uses Xiph.Org's [libogg and libvorbis](https://xiph.org/vorbis/),
-included as source under their BSD licenses.
+Spotifly's Spotify Connect is written in Swift, following the protocol work of
+[librespot](https://github.com/librespot-org/librespot).
+Playback on this Mac is Spotify's [Soloist](https://developer.spotify.com/dashboard/soloist),
+which Spotifly downloads from Spotify.
 
 ## License
 

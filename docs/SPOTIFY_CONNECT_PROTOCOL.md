@@ -1,8 +1,10 @@
 # Spotify Connect Protocol Reference
 
 A comprehensive reference for the Spotify Connect protocol, written from librespot's
-implementation. Spotifly speaks it in `Spotifly/SwiftLibrespot/`: the dealer in
-`Dealer/`, the device state and remote commands in `Connect/SpircController.swift`.
+implementation. Spotifly speaks it in `Spotifly/SwiftLibrespot/` as a controller: the
+dealer in `Dealer/`, and a hidden device that plays nothing in `Connect/SpircController.swift`.
+It answers the incoming commands below without acting on them, and sends its own over
+connect-state (`Spotifly/PartnerAPI/SpclientAPI.swift`). Spotify's Soloist plays.
 Where this document and a capture from a real client disagree, the capture wins.
 
 ## Table of Contents

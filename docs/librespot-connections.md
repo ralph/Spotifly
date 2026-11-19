@@ -4,16 +4,16 @@ This document describes the connection architecture used by librespot to communi
 
 **Spotifly does not use librespot.** Its Swift stack in `Spotifly/SwiftLibrespot/` talks to
 the same servers, and this remains the reference for what they expect, but it keeps only
-part of the machinery described below:
+the Connect controller: it plays nothing, Spotify's Soloist plays.
 
 | librespot | Spotifly |
 |---|---|
-| Session, `core/src/session.rs` | `Core/LibrespotSession.swift`, `Network/Accesspoint.swift` |
-| AP resolution, `core/src/apresolve.rs` | `Network/APResolver.swift` |
-| AudioKey | `Audio/AudioKeyProvider.swift`, over the accesspoint |
-| Channel (audio over the AP) | Not used: audio comes from the CDN via `storage-resolve` (`Network/SPClient.swift`) |
+| Session, `core/src/session.rs` | `Core/LibrespotSession.swift`, with no accesspoint: the dealer and Spirc only |
+| AP resolution, `core/src/apresolve.rs` | `Network/APResolver.swift`, for the dealer and spclient only |
+| AudioKey | Not used |
+| Channel (audio over the AP) | Not used |
 | Mercury | Not used |
-| Login5 | Not used: the one OAuth token from `Spotifly/Auth/` signs in to the accesspoint and is the bearer for spclient and the dealer |
+| Login5 | Not used: the one OAuth token from `Spotifly/Auth/` is the bearer for spclient and the dealer |
 | Dealer, `core/src/dealer/mod.rs` | `Dealer/DealerConnection.swift` |
 | Spirc, `connect/src/spirc.rs` | `Connect/SpircController.swift` |
 
