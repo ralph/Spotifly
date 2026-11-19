@@ -32,32 +32,14 @@ nonisolated enum RepeatMode: Sendable, Equatable {
     }
 }
 
-/// Member type for PutStateRequest
+/// Member type for PutStateRequest: the one this device registers as.
 public nonisolated enum MemberType: UInt32, Sendable {
-    case spircV2 = 0
-    case spircV3 = 1
     case connectState = 2
-    case connectStateExtended = 5
-    case activeDeviceTracker = 6
-    case playToken = 7
 }
 
-/// Reason for PutStateRequest
+/// Reason for PutStateRequest: the one the registration and its heartbeat send.
 public nonisolated enum PutStateReason: UInt32, Sendable {
-    case unknown = 0
     case spircHello = 1
-    case spircNotify = 2
-    case newDevice = 3
-    case playerStateChanged = 4
-    case volumeChanged = 5
-    case pickerOpened = 6
-    case becameInactive = 7
-    case aliasChanged = 8
-    case newConnection = 9
-    case pullPlayback = 10
-    case audioDriverInfoChanged = 11
-    case putStateRateLimited = 12
-    case backendMetadataApplied = 13
 }
 
 /// Device type
@@ -81,17 +63,6 @@ public nonisolated enum DeviceType: UInt32, Sendable {
     case carThing = 101
     case observer = 102
     case homeThing = 103
-}
-
-/// Cluster update reason
-public nonisolated enum ClusterUpdateReason: UInt32, Sendable {
-    case unknown = 0
-    case devicesDisappeared = 1
-    case deviceStateChanged = 2
-    case newDeviceAppeared = 3
-    case deviceVolumeChanged = 4
-    case deviceAliasChanged = 5
-    case deviceNewConnection = 6
 }
 
 // MARK: - ConnectCapabilities
@@ -150,23 +121,13 @@ public nonisolated struct ConnectCapabilities: Sendable {
         }
     }
 
-    /// Reads another device's capabilities. Only these four fields are read; everything
-    /// else keeps this device's defaults, and the supported types add to them.
-    /// Another device's capabilities, as the cluster lists them.
-    ///
-    /// `disable_volume` is the one the app acts on — Speakers hides the slider
-    /// of a device that refuses volume — and it was never read, so every
-    /// device got one. The defaults above are this device's own; a peer's
-    /// supported types replace them rather than add to them.
+    /// Another device's capabilities, as the cluster lists them. Only the two the app acts
+    /// on are read: `hidden`, which keeps a device out of Speakers, and `disable_volume`,
+    /// which hides its volume slider. Everything else keeps this device's defaults.
     public static func parse(from data: Data) -> ConnectCapabilities {
         var caps = ConnectCapabilities()
-        caps.supportedTypes = []
         for field in ProtobufReader.fields(in: data) {
             switch field.number {
-            case 2: caps.canBePlayer = field.bool
-            case 7: caps.isObservable = field.bool
-            case 8: caps.volumeSteps = Int32(truncatingIfNeeded: field.value)
-            case 9: caps.supportedTypes.append(field.string)
             case 12: caps.hidden = field.bool
             case 13: caps.disableVolume = field.bool
             default: break
@@ -249,8 +210,6 @@ public nonisolated struct ProvidedTrack: Sendable {
     public var uid: String = ""
     public var metadata: [String: String] = [:]
     public var provider: String = ""
-    public var albumUri: String = ""
-    public var artistUri: String = ""
 
     public init() {}
 
@@ -280,37 +239,10 @@ public nonisolated struct ProvidedTrack: Sendable {
                 let entry = field.mapEntry
                 track.metadata[entry.key] = entry.value
             case 6: track.provider = field.string
-            case 8: track.albumUri = field.string
-            case 10: track.artistUri = field.string
             default: break
             }
         }
         return track
-    }
-}
-
-// MARK: - ContextIndex
-
-/// Where in its context the current track sits.
-public nonisolated struct ContextIndex: Sendable, Equatable {
-    public var page: UInt32
-    public var track: UInt32
-
-    public init(page: UInt32 = 0, track: UInt32 = 0) {
-        self.page = page
-        self.track = track
-    }
-
-    public static func parse(from data: Data) -> ContextIndex {
-        var index = ContextIndex()
-        for field in ProtobufReader.fields(in: data) {
-            switch field.number {
-            case 1: index.page = UInt32(truncatingIfNeeded: field.value)
-            case 2: index.track = UInt32(truncatingIfNeeded: field.value)
-            default: break
-            }
-        }
-        return index
     }
 }
 
@@ -396,28 +328,18 @@ public nonisolated struct Restrictions: Sendable, Equatable {
 public nonisolated struct PlayerState: Sendable {
     public var timestamp: Int64 = 0
     public var contextUri: String = ""
-    public var contextUrl: String = ""
-    public var index: ContextIndex?
     public var positionAsOfTimestamp: Int64 = 0
     public var duration: Int64 = 0
-    public var playbackSpeed: Double = 0
     public var isPlaying: Bool = false
     public var isPaused: Bool = false
-    public var isBuffering: Bool = false
-    public var isSystemInitiated: Bool = false
     public var options: ContextPlayerOptions = .init()
     public var track: ProvidedTrack?
     public var prevTracks: [ProvidedTrack] = []
     public var nextTracks: [ProvidedTrack] = []
     public var contextMetadata: [String: String] = [:]
-    public var playbackId: String = ""
-    public var sessionId: String = ""
-    public var queueRevision: String = ""
-    public var position: Int64 = 0
-    /// What the device says cannot be done now (field 17), and what its context does not allow
-    /// (field 4). go-librespot reports its context's in both.
+    /// What the device says cannot be done now (field 17). go-librespot reports its
+    /// context's restrictions here as well.
     public var restrictions = Restrictions()
-    public var contextRestrictions = Restrictions()
 
     /// Whether the device says Next cannot be pressed: its `restrictions` name a
     /// `disallow_skipping_next_reason`.
@@ -433,18 +355,11 @@ public nonisolated struct PlayerState: Sendable {
             switch field.number {
             case 1: state.timestamp = field.int64
             case 2: state.contextUri = field.string
-            case 3: state.contextUrl = field.string
-            case 4: state.contextRestrictions = Restrictions.parse(from: field.bytes)
-            case 6: state.index = ContextIndex.parse(from: field.bytes)
             case 7: state.track = ProvidedTrack.parse(from: field.bytes)
-            case 8: state.playbackId = field.string
-            case 9: state.playbackSpeed = field.double
             case 10: state.positionAsOfTimestamp = field.int64
             case 11: state.duration = field.int64
             case 12: state.isPlaying = field.bool
             case 13: state.isPaused = field.bool
-            case 14: state.isBuffering = field.bool
-            case 15: state.isSystemInitiated = field.bool
             case 16: state.options = ContextPlayerOptions.parse(from: field.bytes)
             case 17: state.restrictions = Restrictions.parse(from: field.bytes)
             case 19: state.prevTracks.append(ProvidedTrack.parse(from: field.bytes))
@@ -452,9 +367,6 @@ public nonisolated struct PlayerState: Sendable {
             case 21:
                 let entry = field.mapEntry
                 state.contextMetadata[entry.key] = entry.value
-            case 23: state.sessionId = field.string
-            case 24: state.queueRevision = field.string
-            case 25: state.position = field.int64
             default: break
             }
         }
@@ -482,43 +394,21 @@ public nonisolated struct ConnectDevice: Sendable {
 
 /// Request to update device state in Spotify Connect cluster
 public nonisolated struct PutStateRequestProto: Sendable {
-    public var callbackUrl: String = ""
     public var device: ConnectDevice = .init()
     public var memberType: MemberType = .connectState
     public var isActive: Bool = false
-    public var putStateReason: PutStateReason = .newDevice
-    public var messageId: UInt32 = 0
-    public var lastCommandSentByDeviceId: String = ""
-    public var lastCommandMessageId: UInt32 = 0
-    public var startedPlayingAt: UInt64 = 0
-    public var hasBeenPlayingForMs: UInt64 = 0
+    public var putStateReason: PutStateReason = .spircHello
     public var clientSideTimestamp: UInt64 = 0
-    public var onlyWritePlayerState: Bool = false
 
     public init() {}
 
     public func serialize() -> Data {
         ProtobufWriter.message {
-            $0.nonEmptyString(field: 1, callbackUrl)
             $0.bytes(field: 2, device.serialize())
             $0.varint(field: 3, memberType.rawValue)
             $0.flag(field: 4, isActive)
             $0.varint(field: 5, putStateReason.rawValue)
-            if messageId > 0 {
-                $0.varint(field: 6, messageId)
-            }
-            $0.nonEmptyString(field: 7, lastCommandSentByDeviceId)
-            if lastCommandMessageId > 0 {
-                $0.varint(field: 8, lastCommandMessageId)
-            }
-            if startedPlayingAt > 0 {
-                $0.varint(field: 9, startedPlayingAt)
-            }
-            if hasBeenPlayingForMs > 0 {
-                $0.varint(field: 11, hasBeenPlayingForMs)
-            }
             $0.varint(field: 12, clientSideTimestamp)
-            $0.flag(field: 13, onlyWritePlayerState)
         }
     }
 }
@@ -527,14 +417,9 @@ public nonisolated struct PutStateRequestProto: Sendable {
 
 /// Cluster containing all devices in the Connect group
 public nonisolated struct Cluster: Sendable {
-    public var changedTimestampMs: Int64 = 0
     public var activeDeviceId: String = ""
     public var playerState: PlayerState?
     public var devices: [String: ConnectDeviceInfo] = [:]
-    public var transferData: Data?
-    public var transferDataTimestamp: UInt64 = 0
-    public var needFullPlayerState: Bool = false
-    public var serverTimestampMs: Int64 = 0
 
     public init() {}
 
@@ -544,17 +429,12 @@ public nonisolated struct Cluster: Sendable {
         var cluster = Cluster()
         for field in ProtobufReader.fields(in: data) {
             switch field.number {
-            case 1: cluster.changedTimestampMs = field.int64
             case 2: cluster.activeDeviceId = field.string
             case 3: cluster.playerState = PlayerState.parse(from: field.bytes)
             case 4:
                 // map<string, DeviceInfo>: the entry's key in 1, the device in 2.
                 let entry = field.fields
                 cluster.devices[entry.last(1)?.string ?? ""] = ConnectDeviceInfo.parse(from: entry.last(2)?.bytes ?? Data())
-            case 5: cluster.transferData = field.bytes
-            case 6: cluster.transferDataTimestamp = field.value
-            case 8: cluster.needFullPlayerState = field.bool
-            case 9: cluster.serverTimestampMs = field.int64
             default: break
             }
         }
@@ -567,9 +447,6 @@ public nonisolated struct Cluster: Sendable {
 /// Cluster update message from dealer
 public nonisolated struct ClusterUpdateProto: Sendable {
     public var cluster: Cluster = .init()
-    public var updateReason: ClusterUpdateReason = .unknown
-    public var ackId: String = ""
-    public var devicesThatChanged: [String] = []
 
     public init() {}
 
@@ -578,9 +455,6 @@ public nonisolated struct ClusterUpdateProto: Sendable {
         for field in ProtobufReader.fields(in: data) {
             switch field.number {
             case 1: update.cluster = try Cluster.parse(from: field.bytes)
-            case 2: update.updateReason = ClusterUpdateReason(rawValue: UInt32(truncatingIfNeeded: field.value)) ?? .unknown
-            case 3: update.ackId = field.string
-            case 4: update.devicesThatChanged.append(field.string)
             default: break
             }
         }

@@ -18,7 +18,6 @@ struct ConnectMessageParsingTests {
     @Test func `a cluster update is read through its cluster, player state and device map`() throws {
         let data = ProtobufWriter.message {
             $0.message(field: 1) { cluster in
-                cluster.varint(field: 1, 1_790_000_000_000) // changed_timestamp_ms
                 cluster.string(field: 2, "phone") // active_device_id
                 cluster.message(field: 3) { player in
                     player.varint(field: 1, 1_790_000_000_123) // timestamp
@@ -43,26 +42,11 @@ struct ConnectMessageParsingTests {
                         device.string(field: 10, "phone") // device_id
                     }
                 }
-                cluster.varint(field: 6, 1_789_999_000_000) // transfer_data_timestamp
-                cluster.bool(field: 8, true) // need_full_player_state
             }
-            $0.varint(field: 2, 2) // update_reason: DEVICE_STATE_CHANGED
-            $0.string(field: 3, "ack") // ack_id
-            $0.string(field: 4, "phone") // devices_that_changed
-            $0.string(field: 4, "mac")
         }
 
-        let update = try ClusterUpdateProto.parse(from: data)
-
-        #expect(update.updateReason == .deviceStateChanged)
-        #expect(update.ackId == "ack")
-        #expect(update.devicesThatChanged == ["phone", "mac"])
-
-        let cluster = update.cluster
-        #expect(cluster.changedTimestampMs == 1_790_000_000_000)
+        let cluster = try ClusterUpdateProto.parse(from: data).cluster
         #expect(cluster.activeDeviceId == "phone")
-        #expect(cluster.transferDataTimestamp == 1_789_999_000_000)
-        #expect(cluster.needFullPlayerState)
 
         let device = try #require(cluster.devices["phone"])
         #expect(device.name == "Phone")
@@ -99,19 +83,17 @@ struct ConnectMessageParsingTests {
         #expect(next.disallowsSkippingNext)
     }
 
-    /// A station's restrictions, as the web player playing one sent them (2026-10-02): its
-    /// context's at field 4 and its own at 17, each reason at its field's number.
+    /// A station's restrictions, as the web player playing one sent them (2026-10-02): at
+    /// field 17, each reason at its field's number.
     @Test func `restrictions are read at player.proto's numbers`() {
         let radio = ProtobufWriter.message {
             $0.string(field: 8, "radio")
             $0.string(field: 10, "radio")
         }
         let state = PlayerState.parse(from: ProtobufWriter.message {
-            $0.bytes(field: 4, radio)
             $0.bytes(field: 17, radio)
         })
 
-        #expect(state.contextRestrictions == .radio)
         #expect(state.restrictions == .radio)
         #expect(!state.restrictions.allowsShuffle)
         #expect(!state.restrictions.allows(.context))
@@ -119,29 +101,18 @@ struct ConnectMessageParsingTests {
         #expect(!state.disallowsSkippingNext)
     }
 
-    @Test func `the context fields are read at player.proto's numbers`() {
+    @Test func `the context metadata is read at player.proto's number`() {
         let data = ProtobufWriter.message {
-            $0.string(field: 3, "context://spotify:album:abc") // context_url
-            $0.message(field: 6) { index in
-                index.varint(field: 1, 1) // page
-                index.varint(field: 2, 7) // track
-            }
-            $0.double(field: 9, 1.5) // playback_speed
             $0.map(field: 21, ["zeta": "1", "alpha": "2"]) // context_metadata
-            $0.string(field: 24, "revision") // queue_revision
         }
 
         let state = PlayerState.parse(from: data)
 
-        #expect(state.contextUrl == "context://spotify:album:abc")
-        #expect(state.index == ContextIndex(page: 1, track: 7))
-        #expect(state.playbackSpeed == 1.5)
         #expect(state.contextMetadata == ["zeta": "1", "alpha": "2"])
-        #expect(state.queueRevision == "revision")
     }
 
-    /// `Capabilities.disable_volume` is field 13 in connect.proto; `supported_types` is 9.
-    @Test func `a device that refuses volume says so, and lists only its own types`() {
+    /// `Capabilities.disable_volume` is field 13 in connect.proto.
+    @Test func `a device that refuses volume says so`() {
         let refusing = ConnectCapabilities.parse(from: ProtobufWriter.message {
             $0.string(field: 9, "audio/track")
             $0.bool(field: 13, true)
@@ -152,7 +123,6 @@ struct ConnectMessageParsingTests {
 
         #expect(refusing.disableVolume)
         #expect(!accepting.disableVolume)
-        #expect(refusing.supportedTypes == ["audio/track"])
     }
 
     /// `Capabilities.hidden` is field 12 in connect.proto. A hidden device is one no device
