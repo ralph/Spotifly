@@ -1,8 +1,9 @@
 # Spotify Soloist as the playback engine
 
-Status: **Open**, draft. Decided on 2026-11-05: Spotifly drops the App Sandbox. The rest of
-the direction is not agreed. The live pairing probe ran on 2026-11-09 (probe 4); shuffle,
-repeat, AirPlay output, inline lists and a Free account are still untested. Researched
+Status: **Open**, draft. Decided on 2026-11-05: Spotifly drops the App Sandbox; done in
+#228 and tested on 2026-11-19. The rest of the direction is not agreed. The live pairing
+probe ran on 2026-11-09 (probe 4); shuffle, repeat, AirPlay output, inline lists and a Free
+account are still untested. Researched
 2026-11-02 against Soloist 1.3.10.35 (macOS build of 2026-11-02); Spotifast's setup and the
 Homebrew cask checked 2026-11-03 (1.3.10.37, built that day).
 Components: proposed new `Spotifly/Soloist/` (manager, WebSocket client, setup);
@@ -235,9 +236,9 @@ code. Nothing visible changes except where the files live.
 - **Migration, once at launch,** before anything reads `UserDefaults`:
   1. Skip if a marker key is set, or if `~/Library/Containers/rvdh.Spotifly/Data` does not
      exist.
-  2. Copy every key from the container's preferences plist that is not already set. This
-     keeps the settings and the Connect device id (`DeviceInfo`); without the id, Spotify
-     would see a new device.
+  2. Copy every key from the container's preferences plist, over any value already set
+     (see Implementation notes). This keeps the settings and the Connect device id
+     (`DeviceInfo`); without the id, Spotify would see a new device.
   3. Move the container's `credentials.json` into the Keychain.
   4. Set the marker. Caches are not copied.
 
@@ -246,8 +247,9 @@ code. Nothing visible changes except where the files live.
 - **Reading the old container.** macOS 14 and later protect app containers from other apps.
   The shell here cannot read Spotifly's container ("Operation not permitted"). According to
   Apple at WWDC23 (quoted on the developer forums), apps signed by the same team can read
-  each other's containers without a prompt. Releases are signed with team `89S4HZY343`, so the migration should work. This
-  is not tested; step 2 of Verification checks it.
+  each other's containers without a prompt. Releases are signed with team `89S4HZY343`.
+  Verified on 2026-11-19 with a Debug build of the same team: no prompt (Verification,
+  step 2).
 - **Elsewhere.** `RELEASE.md` says the sandbox is on. The cask's `zap` lists
   `com.spotifly.app` paths, which do not match the bundle id `rvdh.Spotifly`. List the real
   ones: the preferences plist, `~/Library/Caches/rvdh.Spotifly`,
@@ -401,11 +403,24 @@ Developer ID, not with a Debug run beside the installed app.
 A release build does not log (`debugLog` compiles away), so these observations are the
 result.
 
+**Result (2026-11-19, PR #228).** It ran with a Debug build started from Xcode, not with a
+Developer ID archive. That build is signed by the same team with an Apple Development
+certificate. After it ran, the migration could not be repeated on that Mac. Results:
+
+- No permission prompt. The container was read: `SpotifyDeviceId` in the new preferences
+  file changed from the id a unit-test run had written there to the container's.
+- Still signed in. Volume and bitrate were kept. Spotifly is listed once in the phone's
+  device list.
+- The keychain item `com.spotifly.librespot` was created at the moment of the first launch.
+  On the next launch, the log shows "Authenticating with reusable credentials", so the
+  login came from the keychain without a browser grant.
+
 ### After implementation
 
 Tests:
-- the migration: keys copied only where unset, the marker, the stored login moved, and an
-  unreadable container skipped;
+- the migration (done in #228): the container's settings win, it runs once, the stored login
+  moves, an unreadable container is skipped, and a Mac without a container is only marked
+  done;
 - the parser for every documented WebSocket event;
 - the archive extractor (rejects links and paths outside the directory);
 - the signature check (rejects a re-signed binary);
@@ -421,4 +436,21 @@ Manual run:
 
 ### Implementation notes
 
-None yet.
+**Leaving the sandbox** (PR #228, 2026-11-13):
+
+- **The container's settings win.** The design said to copy only keys that are not set yet.
+  Without the sandbox, the unit-test host writes the real domain before the app's first
+  launch, and the first test run created it with a fresh `SpotifyDeviceId`. With "not set
+  yet", that id would have replaced the user's, and Spotify would have seen a new device.
+  Launch arguments are a separate domain, so they still win.
+- **The test host does not migrate**, so that tests cannot move the developer's data.
+- **`defaults read rvdh.Spotifly` is misleading while the container exists.** `defaults`
+  reads the container's plist then, and a process without access gets "Domain not found".
+  The app is not affected. To inspect the new file, use
+  `plutil -p ~/Library/Preferences/rvdh.Spotifly.plist`.
+- **Test suites are now real files.** `UserDefaults(suiteName:)` in a test writes to
+  `~/Library/Preferences`, and `cfprefsd` writes a deleted suite back. So
+  `ContainerMigrationTests` uses one suite name and runs serialized.
+- **A keychain item made by a Debug build** may make a release build of the same team ask
+  once for keychain access on a developer's Mac. On users' Macs the release build creates
+  the item itself.
