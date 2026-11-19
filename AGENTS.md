@@ -146,8 +146,8 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
   asks for on every change of the queue and again when the network returns. No copy of the
   queue is kept anywhere else, so its rows and its context come from one snapshot
 - Plays and commands go over connect-state from `PlaybackViewModel`, to the active device or
-  to Soloist. The static `SpotifyPlayer` facade keeps the session, transfers and the tracks an
-  album or playlist queues as
+  to Soloist (`SpclientAPI`). `SpotifyPlayer` only starts the session for the account and
+  clears its credentials at logout
 
 **Entities** (`Store/Entities.swift`)
 - Unified data models: `Track`, `Album`, `Artist`, `Playlist`, `Device`
