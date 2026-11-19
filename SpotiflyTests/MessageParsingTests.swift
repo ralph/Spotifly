@@ -24,7 +24,10 @@ struct ConnectMessageParsingTests {
                     player.string(field: 2, "spotify:album:abc") // context_uri
                     player.message(field: 7) { track in
                         track.string(field: 1, "spotify:track:current")
-                        track.map(field: 3, ["key": "value"]) // metadata
+                        track.message(field: 3) { entry in // metadata
+                            entry.string(field: 1, "key")
+                            entry.string(field: 2, "value")
+                        }
                     }
                     player.varint(field: 10, 42000) // position_as_of_timestamp
                     player.varint(field: 11, 200_000) // duration
@@ -102,8 +105,14 @@ struct ConnectMessageParsingTests {
     }
 
     @Test func `the context metadata is read at player.proto's number`() {
+        // map<string, string> context_metadata: one entry message per key.
         let data = ProtobufWriter.message {
-            $0.map(field: 21, ["zeta": "1", "alpha": "2"]) // context_metadata
+            for (key, value) in [("zeta", "1"), ("alpha", "2")] {
+                $0.message(field: 21) { entry in
+                    entry.string(field: 1, key)
+                    entry.string(field: 2, value)
+                }
+            }
         }
 
         let state = PlayerState.parse(from: data)
