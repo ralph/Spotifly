@@ -52,18 +52,6 @@ nonisolated struct ProtobufWriter {
         bytes(field: field, Self.message(body))
     }
 
-    /// A `map<string, string>`: one entry message per key, key in field 1 and value in
-    /// field 2. Entries go out in key order, so the bytes do not depend on how the
-    /// dictionary happens to iterate.
-    mutating func map(field: Int, _ map: [String: String]) {
-        for (key, value) in map.sorted(by: { $0.key < $1.key }) {
-            message(field: field) {
-                $0.string(field: 1, key)
-                $0.string(field: 2, value)
-            }
-        }
-    }
-
     /// A bool written only when true. Connect-state is proto3: a field at its default may stay
     /// off the wire, and the peer reads its absence as that default. The writer never skips a
     /// field by itself, so this and `nonEmptyString` say so where a message does.
@@ -78,11 +66,6 @@ nonisolated struct ProtobufWriter {
         if !value.isEmpty {
             string(field: field, value)
         }
-    }
-
-    mutating func double(field: Int, _ value: Double) {
-        appendTag(field: field, wire: 1)
-        withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
     }
 
     private mutating func appendTag(field: Int, wire: UInt64) {
@@ -123,18 +106,8 @@ nonisolated struct ProtobufField {
         Int64(bitPattern: value)
     }
 
-    /// A `sint32`/`sint64`, which the wire format zigzag-encodes: read as a plain
-    /// varint it comes out doubled.
-    var sint64: Int64 {
-        Int64(bitPattern: value >> 1) ^ -Int64(bitPattern: value & 1)
-    }
-
     var string: String {
         String(decoding: bytes, as: UTF8.self)
-    }
-
-    var double: Double {
-        Double(bitPattern: value)
     }
 
     /// The fields of a nested message.

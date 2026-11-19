@@ -13,14 +13,14 @@ import Foundation
 /// `createPlaylist` and no `renamePlaylist` operation — harvested on 2026-08-14, which lists
 /// every `(name, kind, hash)` triple it constructs — so there is no GraphQL mutation to call.
 /// Playlists and the list of them belong to the playlist service at
-/// `spclient.wg.spotify.com/playlist/v2`, the same service librespot already reads them from.
+/// `spclient.wg.spotify.com/playlist/v2`, the service upstream librespot reads them from.
 ///
 /// **These are protobuf messages sent as JSON.** The schema is `playlist4_external`, which
 /// librespot vendors in `protocol/proto/playlist4_external.proto`, and the service speaks
 /// proto3's JSON mapping in both directions — so plain `Codable` covers it and no protobuf
 /// runtime is involved. Worth measuring rather than assuming: the app carries a hand-rolled
-/// `Protobuf.swift` for the client-token handshake, and reaching for it here would have been
-/// the obvious wrong move.
+/// `Protobuf.swift` for connect-state and the client-token handshake, and reaching for it here
+/// would have been the obvious wrong move.
 ///
 /// Only the kinds this app sends are modelled, and the unused payloads encode as absent. The
 /// factories exist so no call site can name a `kind` without the payload that goes with it.

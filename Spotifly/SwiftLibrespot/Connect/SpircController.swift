@@ -50,7 +50,7 @@ public actor SpircController {
         public struct ConnectedDevice: Sendable, Identifiable {
             public let id: String
             public let name: String
-            public let deviceType: SpotifyDeviceType
+            public let deviceType: DeviceType
             public let isActive: Bool
             public let volume: UInt32
             /// The device says it takes no volume commands. Speakers hides its
@@ -168,13 +168,13 @@ public actor SpircController {
     }
 
     /// A PutState for this device, never active: it plays nothing.
-    private func buildPutStateRequest() -> PutStateRequestProto {
+    func buildPutStateRequest(at date: Date = Date()) -> PutStateRequestProto {
         var request = PutStateRequestProto()
         request.device = buildDevice()
         request.memberType = .connectState
         request.isActive = false
         request.putStateReason = .spircHello
-        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
+        request.clientSideTimestamp = UInt64(date.timeIntervalSince1970 * 1000)
         return request
     }
 
@@ -244,7 +244,7 @@ public actor SpircController {
             ClusterState.ConnectedDevice(
                 id: deviceId,
                 name: deviceInfoProto.name,
-                deviceType: SpotifyDeviceType(rawValue: Int(deviceInfoProto.deviceType.rawValue)) ?? .unknown,
+                deviceType: deviceInfoProto.deviceType,
                 isActive: deviceId == cluster.activeDeviceId,
                 volume: deviceInfoProto.volume,
                 disableVolume: deviceInfoProto.capabilities.disableVolume,

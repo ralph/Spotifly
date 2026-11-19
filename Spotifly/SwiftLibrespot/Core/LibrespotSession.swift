@@ -22,10 +22,8 @@ public nonisolated enum SessionState: Sendable, Equatable {
 /// controller — and forwards their events. Reconnection rebuilds both from the same
 /// credentials.
 ///
-/// There is no accesspoint: it was the built-in player's channel, for its login, the account
-/// type that decided whether this Mac could stream, and the audio keys. The dealer and Spirc
-/// need only the token, which also signs every other request, so the session works for any
-/// account. Spotify's Soloist plays for this Mac (`SoloistEngine`).
+/// The dealer and Spirc need only the token, which also signs every other request, so the
+/// session works for any account. Spotify's Soloist plays for this Mac (`SoloistEngine`).
 public actor LibrespotSession {
     // MARK: - Properties
 

@@ -118,7 +118,7 @@ request looks correct and the store is wrong.
   `Track(spclient:id:)` — rather than field by field. A hand-written conversion is how
   `/search` once came to disagree with everything around it while looking reasonable;
 - where a response is read without one, as the queue reads the cluster's uris, take the id
-  in the uri as given (`SpotifyAPI.parseTrackURI`).
+  in the uri as given (`SpotifyURI.trackId(from:)`).
 
 ## State Management Architecture
 

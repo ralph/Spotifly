@@ -466,11 +466,11 @@ final class PlaybackViewModel {
     func playRadio(trackUri: String) async {
         // A track Spotify will not play starts nothing, radio included, wherever it is
         // clicked: a search card, a row or its menu.
-        if let message = SpotifyAPI.parseTrackURI(trackUri).flatMap({ store?.tracks[$0] })?.unplayableMessage {
+        if let message = SpotifyURI.trackId(from: trackUri).flatMap({ store?.tracks[$0] })?.unplayableMessage {
             errorMessage = message
             return
         }
-        guard let trackId = SpotifyAPI.parseTrackURI(trackUri) else { return }
+        guard let trackId = SpotifyURI.trackId(from: trackUri) else { return }
         await play(uri: "spotify:station:track:\(trackId)")
     }
 
@@ -1168,7 +1168,7 @@ final class PlaybackViewModel {
         let reportedDurationMs = Self.playbackMilliseconds(state.durationMs).flatMap { $0 > 0 ? $0 : nil }
         shown = ShownPlayback(
             trackUri: state.trackUri,
-            trackId: SpotifyAPI.parseTrackURI(state.trackUri),
+            trackId: SpotifyURI.trackId(from: state.trackUri),
             isPlaying: state.isPlaying,
             durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
             shuffle: state.shuffle,
