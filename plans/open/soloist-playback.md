@@ -1,18 +1,23 @@
 # Spotify Soloist as the playback engine
 
-Status: **Open**, draft. Decided on 2026-11-05: Spotifly drops the App Sandbox; done in
-#228 and tested on 2026-11-19. The rest of the direction is not agreed. The live pairing
-probe ran on 2026-11-09 (probe 4); shuffle, repeat, AirPlay output, inline lists and a Free
-account are still untested. Researched
-2026-11-02 against Soloist 1.3.10.35 (macOS build of 2026-11-02); Spotifast's setup and the
-Homebrew cask checked 2026-11-03 (1.3.10.37, built that day).
-Components: proposed new `Spotifly/Soloist/` (manager, WebSocket client, setup);
-`Spotifly/ViewModels/PlaybackViewModel.swift` (`playbackTarget`), `Spotifly/SpotifyPlayer.swift`,
-`Spotifly/PartnerAPI/ConnectState.swift`, `Spotifly/Views/SpeakersView.swift`,
-`Spotifly/Views/PreferencesView.swift`, `Spotifly/KeychainManager.swift`; for leaving the
+Status: **Open**. Agreed on 2026-11-19: all in on Soloist ("Decisions of 2026-11-19" below).
+Done: leaving the App Sandbox (#228, decided 2026-11-05) and Soloist as this Mac's player with
+AirPlay removed (#229, merged as `ed6f710`), both checked live on 2026-11-19. Still open:
+queue editing while Soloist plays (decision 4), Free accounts, an inline track list and an
+expired build checked live, and removing the built-in player. Researched 2026-11-02 against
+Soloist 1.3.10.35 (macOS build of 2026-11-02); Spotifast's setup and the Homebrew cask checked
+2026-11-03 (1.3.10.37, built that day); built against 1.3.10.85 (2026-11-19).
+Components: `Spotifly/Soloist/SoloistEngine.swift`, `Spotifly/Soloist/SoloistInstaller.swift`,
+`Spotifly/ViewModels/PlaybackViewModel.swift` (`playbackTarget`, transport commands),
+`Spotifly/Store/PlayerModel.swift` (`thisMacDeviceId`), `Spotifly/SpotifyPlayer.swift`,
+`Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`playsHere`),
+`Spotifly/SwiftLibrespot/Connect/SpircController.swift` (hidden devices),
+`Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/PreferencesView.swift`,
+`Spotifly/Views/NowPlayingBarView.swift`, `Spotifly/KeychainManager.swift`; for leaving the
 sandbox, `Spotifly/Spotifly.entitlements`, `Spotifly.xcodeproj/project.pbxproj`,
-`Spotifly/SpotiflyApp.swift`, `Spotifly/SwiftLibrespot/Core/StoredCredentialsStore.swift`,
-`RELEASE.md` and `../homebrew-spotifly/Casks/spotifly.rb`
+`Spotifly/SpotiflyApp.swift`, `Spotifly/ContainerMigration.swift`,
+`Spotifly/SwiftLibrespot/Core/StoredCredentialsStore.swift`, `RELEASE.md` and
+`../homebrew-spotifly/Casks/spotifly.rb`
 Found: 2026-11-02, after Spotify shipped Soloist for Apple Silicon Macs. Spotifly's own audio
 path depends on audio keys that Spotify refuses for some accounts (#223, librespot#1649).
 
@@ -34,21 +39,24 @@ Soloist only plays. It has no search, library or playlists. So this plan replace
 uses no reverse-engineered API at all is not reachable today; "Why not fully official"
 explains why.
 
-Proposed shape:
+The shape, agreed on 2026-11-19:
 
 1. Spotifly downloads Soloist from Spotify's CDN after the user consents. It never bundles
    it.
 2. Spotifly runs Soloist as a child process with a loopback WebSocket.
 3. Spotifly treats Soloist as a Connect device it owns: it starts playback through the
-   existing remote path, and reads lifecycle and pairing state from the WebSocket.
-4. The Swift librespot engine stays as the fallback.
+   existing remote path, and reads pairing state from the WebSocket.
+4. Everything Soloist plays, it plays. Everything else stays on whatever API works today:
+   Pathfinder, spclient, connect-state and the cluster. Official APIs come later.
+5. The Swift librespot engine stays as the fallback until Soloist has proven itself, and is
+   then removed.
 
 A sandboxed Spotifly cannot run Soloist from any install location (probes below), and
 Spotifast works because it is not sandboxed. So Spotifly drops the App Sandbox (decided
 2026-11-05) and moves its data out of the container once.
 
-One decision still blocks making Soloist the default: **AirPlay.** Soloist plays only to the
-system's default output.
+**AirPlay** was the decision that blocked making Soloist the default. It is dropped: Soloist
+plays to the system's output, where AirPlay is chosen in the system's own menu.
 
 ## Problem
 
@@ -334,6 +342,21 @@ Peter Schorn's SpotifyAPI is not a fit:
 - It has an open PKCE refresh bug (#77).
 - It was last changed in May 2026.
 
+### Decisions of 2026-11-19
+
+Ralph decided to go all in on Soloist, as fast as possible:
+
+- **Soloist is this Mac's player.** Once chosen in Settings, every play and every command for
+  this Mac goes to Soloist. While it is chosen but not ready, the app says so; it does not
+  play on the built-in player behind it.
+- **The rest uses any API that works.** Browsing stays on Pathfinder and spclient, and
+  control on connect-state and the cluster. Moving those to official APIs is later work, not
+  part of this plan.
+- **AirPlay goes** (decision 2 below). Spotifly offers no AirPlay of its own while Soloist
+  plays to the Mac's output.
+- **The built-in player stays for now**, as the fallback when Soloist is turned off. Removing
+  it is the last step, once Soloist has proven itself.
+
 ### Open decisions
 
 1. **Sandbox: decided on 2026-11-05, drop it.** "Leaving the sandbox" above has the design.
@@ -349,43 +372,48 @@ Peter Schorn's SpotifyAPI is not a fit:
    up: Soloist runs unsandboxed either way, so the sandbox protected only Spotifly's own
    code, such as the built-in engine's C Vorbis decoder, which parses data from the
    network.
-2. **AirPlay (blocks a default switch, not an opt-in engine).** Soloist cannot use
-   Spotifly's AVPlayer route. The options are:
-   - (a) the user sets the Mac's output to AirPlay;
+2. **AirPlay: decided on 2026-11-19, drop it.** Soloist cannot use Spotifly's AVPlayer
+   route. The options were:
+   - (a) the user sets the Mac's output to AirPlay (chosen);
    - (b) a Core Audio process tap feeding Spotifly's AVPlayer path, as Spotifast does for
      its EQ. This needs a permission, adds latency, and is a grey area;
    - (c) ask Spotify for a macOS output option like `--pipewire-device`.
 
-   The proposal is (a) plus filing (c), with the built-in engine kept for AirPlay until one
-   of them works.
-3. **Transport over the WebSocket or connect-state.** The WebSocket is official and local.
-   Connect-state is already built and is the only route for starts with an offset. The
-   proposal: connect-state for everything first, because it is one path and already tested;
-   move to the WebSocket where it has the same command. Probe 4 supports this: every
-   connect-state command it tried worked on Soloist. Shuffle and repeat are untested.
-4. **Queue editing while Soloist plays.** Soloist has no remove or reorder. Either hide
-   these controls, as Spotifast does, or try connect-state's queue writes on Soloist's
-   device (unverified; probe 4 tested only adding).
-5. **Two Connect devices.** Spotifly registers its own Connect device to send commands. With
-   Soloist running, other apps see both "Spotifly" and the Soloist device. Decide whether
-   Spotifly's own registration can be hidden or not playable.
+   Ralph chose (a) without the built-in engine as an AirPlay fallback: "airplay kannste
+   löschen. machen wir nicht wenn wir auf soloist gehen". #229 removed the bar's picker,
+   the AirPlay section in Speakers and their strings. (c) is not filed.
+3. **Transport: decided, connect-state for everything** (#229). It is one path, it already
+   existed, and it is the only route for starts with an offset. Every command tried worked on
+   Soloist: pause, resume, seek, skips, volume, queue add and `skip_next` to a row (probe 4);
+   shuffle, repeat and song radio as `spotify:station:track:…` (2026-11-19). The WebSocket is
+   used only for pairing state.
+4. **Queue editing while Soloist plays: still open.** Soloist has no remove or reorder.
+   Either hide these controls, as Spotifast does, or try connect-state's queue writes on
+   Soloist's device. #229 left the controls as they are for any other device; nothing has
+   checked them on Soloist.
+5. **Two Connect devices: decided and built** (#229). Spotifly's own session registers its
+   device hidden and not playable while Soloist is chosen (`SpotifyPlayer.initialize` passes
+   `playsHere: false`), through the path an account that cannot stream already took. The
+   cluster still answers it and pushes to it, and hidden devices are left out of Speakers. So
+   the account lists one "Spotifly", which is Soloist.
 
 ## Verification
 
 ### Step 1: live pairing probe (manual, no app code)
 
-Ran on 2026-11-09; probe 4 has the results. Still to do, in a second round with the same
-data directory (keep the volume low and keep playback off WohnzimmerStereo):
+Ran on 2026-11-09; probe 4 has the results. The second round ran on 2026-11-19 with #229's
+build:
 
-1. Restart Soloist and check that it logs in without the phone.
-2. From Spotifly, toggle shuffle and cycle repeat while Soloist plays.
-3. In Spotifly's queue, click an earlier row whose track is not relinked. If Soloist keeps
-   the context's order, the relink caused the reorder in probe 4.
-4. With the Mac's output set to the HomePod, note where Soloist plays (part of decision 2).
-5. If a Free account is available, check whether it can pick the paired device and play.
+1. Restart without the phone: done. Soloist logged "restoring session", then "logged in".
+2. Shuffle on and off, and repeat context → track → off: done, each reached Soloist.
+3. A queue click on an earlier, non-relinked row: not run. A playlist row started from
+   Spotifly, which sends the row's index, kept the context's order (2026-11-19).
+4. Soloist with the Mac's output on the HomePod: not run. AirPlay is the system's now
+   (decision 2).
+5. A Free account: not run, none at hand. The accesspoint refuses a Free account's login, so
+   Spotifly has no session to command Soloist from.
 
-An inline track list can only be tested once Spotifly sends its starts to Soloist, so it
-moves to the manual run after implementation.
+An inline track list moves to the manual run after implementation.
 
 ### Step 2: leaving the sandbox (manual, with a release-signed build)
 
@@ -421,18 +449,23 @@ Tests:
 - the migration (done in #228): the container's settings win, it runs once, the stored login
   moves, an unreadable container is skipped, and a Mac without a container is only marked
   done;
-- the parser for every documented WebSocket event;
-- the archive extractor (rejects links and paths outside the directory);
-- the signature check (rejects a re-signed binary);
-- the expiry date parsed from `--version`;
-- the engine choice in `playbackTarget`.
+- the socket's pairing state, from messages `soloist ctl trace` recorded (done in #229);
+- the signature check: a binary not signed by Spotify is refused (done in #229);
+- the version and build date read from `--version`, and the 30- and 90-day limits (done in
+  #229);
+- where plays go with Soloist ready and not ready, in `playbackTarget` (done in #229);
+- the `hidden` capability (done in #229).
 
-Manual run:
-- setup from a clean state;
-- pairing, then a restart that restores the session;
-- a play from a row in a playlist, and an inline track list;
-- an expired build (simulate with exit code 10);
-- killing the child mid-track.
+The archive extractor got no test of its own: #229 unpacks with `/usr/bin/tar`, and the
+signature check decides what runs (Implementation notes).
+
+Manual run (#229, 2026-11-19):
+- setup from a clean state: done (download, signature check, pairing from the phone);
+- pairing, then a restart that restores the session: done;
+- a play from a row in a playlist: done, in order; an inline track list: not run;
+- an expired build (exit code 10): not run;
+- killing the child: done, while paused rather than mid-track. It restarted after two
+  seconds with the app idle.
 
 ### Implementation notes
 
@@ -454,3 +487,42 @@ Manual run:
 - **A keychain item made by a Debug build** may make a release build of the same team ask
   once for keychain access on a developer's Mac. On users' Macs the release build creates
   the item itself.
+
+**Soloist as this Mac's player** (PR #229, 2026-11-19). Where the build departs from the
+design above, and what it found:
+
+- **Names.** The design's `SoloistManager` is `SoloistEngine` (process, socket, state), with
+  `SoloistInstaller` beside it (download, signature, version).
+- **Unpacking.** `/usr/bin/tar` instead of a bounded extractor of our own. bsdtar refuses
+  absolute paths, `..` and writing through links by default, the archive comes from
+  Spotify's CDN over HTTPS, and nothing runs unless it passes the signature check. The check
+  runs off the main thread (`@concurrent`): hashing the 26 MB binary takes 50–80 ms.
+- **Renewal** happens only at a start, before the launch, so a build is never swapped while
+  it plays.
+- **The socket reports pairing only.** The design also read "active" from it. The cluster's
+  active device says that already, so a second source could only disagree.
+  `PlayerModel.thisMacDeviceId` names the device that plays for this Mac (Soloist's once
+  chosen), and `isPlayingHere` reads it. Speakers, the settings' "Playing" and the sleep
+  pause use it.
+- **Soloist's Connect id** is the contents of `data/.device_id`, and the cluster lists it
+  under that id.
+- **A play to an inactive Soloist activates it.** No transfer or `activate` is needed first.
+- **`-i` applies only to Soloist's first start.** Afterwards it starts at the volume it
+  stored.
+- **Chosen but not ready, nothing plays.** The design kept the built-in player "for Soloist
+  outages and expired builds". #229 says so instead (`soloist.not_ready`), for plays and,
+  with nothing active, for transport commands. The built-in player plays only with Soloist
+  turned off.
+- **Song radio** is the track's station, `spotify:station:track:<id>`, played wherever a
+  play goes. Soloist took it over connect-state. As a side effect, a Mac that cannot play now
+  sends radio to an active phone. That is not tried on a phone.
+- **Setup** sits in Settings → Playback: a key field, a link to the dashboard, and "Download
+  and use", which is the consent. The status line asks for the pick in the Spotify app while
+  Soloist waits for pairing.
+- **Quitting** stops Soloist inside `applicationShouldTerminate`, beside the player's
+  shutdown, within its two-second hold: SIGTERM, then SIGKILL after a second. A crash of
+  the app leaves Soloist running, and the next start stops it first.
+- **A FileHandle at end of file keeps calling its `readabilityHandler`.** The log handler
+  must remove itself there; before that fix, every exit of Soloist left one core busy.
+- **The device name is "Spotifly".** Spotifly's own session device is hidden while Soloist
+  is chosen, so the name is free.
