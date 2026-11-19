@@ -103,21 +103,14 @@ struct NowPlayingBarView: View {
 
             trackMenu
 
-            // The AirPlay picker for Spotifly alone while it plays here; otherwise the way to
-            // Wiedergabe auf, where the device it plays on is chosen.
-            if player.isPlayingHere {
-                AirPlayRoutePickerView()
-                    .frame(width: 26, height: 22)
-                    .help("now_playing.airplay")
-            } else {
-                Button {
-                    exitMiniPlayerIfNeeded()
-                    navigationCoordinator.selectNavigationItem(.speakers)
-                } label: {
-                    Image(systemName: "airplay.audio")
-                }
-                .named("now_playing.playing_on")
+            // The way to Wiedergabe auf, where the device it plays on is chosen.
+            Button {
+                exitMiniPlayerIfNeeded()
+                navigationCoordinator.selectNavigationItem(.speakers)
+            } label: {
+                Image(systemName: "hifispeaker.2")
             }
+            .named("now_playing.playing_on")
 
             if fit == .everything {
                 VolumeControl()
@@ -520,14 +513,10 @@ private struct VolumeControl: View {
         .help(helpText(refused: refused))
     }
 
-    /// Why the slider is greyed, or, while this Mac plays, where an AirPlay receiver's volume is:
-    /// in the AirPlay picker. The slider sets this Mac's player, which no receiver hears (measured
-    /// on a HomePod), and nothing tells the app a receiver is chosen to say so only then.
+    /// Why the slider is greyed, if it is.
     private func helpText(refused: Bool) -> Text {
         if refused {
             Text("volume.device_controls_itself \(player.activeDevice?.name ?? "")")
-        } else if player.activeRemoteDeviceId == nil {
-            Text("volume.airplay_help")
         } else {
             Text("volume.title")
         }

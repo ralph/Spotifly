@@ -9,9 +9,9 @@ import AVFoundation
 import CoreMedia
 import Synchronization
 
-/// Plays the pipeline's PCM through an `AVPlayer`: the one player macOS lets the AirPlay picker
-/// send to a receiver alone, the rest of the Mac's audio staying where it is
-/// (`plans/done/avplayer-output.md`).
+/// Plays the built-in player's PCM through an `AVPlayer`. It was chosen because it is the one
+/// player macOS lets an AirPlay picker send to a receiver alone (`plans/done/avplayer-output.md`);
+/// that picker went when Spotify's Soloist became the player, and only the output is left.
 ///
 /// The pipeline pushes interleaved 44.1 kHz stereo Float32 PCM, which the stream carries as 16-bit
 /// integers (`int16`), and paces itself on `enqueue`,
@@ -74,7 +74,7 @@ actor AudioOutput {
     /// The latest volume asked for, which the player takes on the main actor.
     private nonisolated let requestedVolume = Mutex<Float>(1)
 
-    /// The player itself, on the main actor, as its KVO and the AirPlay picker are.
+    /// The player itself, on the main actor, as its KVO is.
     nonisolated var output: AudioOutputPlayer {
         AudioOutputPlayer.shared
     }
@@ -184,8 +184,6 @@ actor AudioOutput {
     // MARK: - Volume
 
     /// Sets the player's gain (0…1), after the perceptual curve; the player keeps it across items.
-    /// A receiver's volume is its own, set in the AirPlay picker: no public API reaches it, and
-    /// this gain does not (measured on a HomePod, 70 % and 30 % alike).
     nonisolated func setVolume(_ volume: Float) {
         requestedVolume.withLock { $0 = max(0, min(1, volume)) }
         Task { @MainActor in
@@ -196,7 +194,7 @@ actor AudioOutput {
 
 // MARK: - Output
 
-/// The `AVPlayer` the output plays its stream through, and the one the AirPlay picker binds.
+/// The `AVPlayer` the output plays its stream through.
 @MainActor
 final class AudioOutputPlayer {
     nonisolated static let shared = AudioOutputPlayer()

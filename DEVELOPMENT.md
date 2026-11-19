@@ -36,7 +36,7 @@ Swift.
 | `…/Dealer/`, `…/Connect/` | The dealer WebSocket, and `SpircController`, which publishes this device's state to the Connect cluster and turns remote commands into player calls. |
 | `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into the `AudioOutput`, a chunk at a time, each one awaited. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
 | `…/Proto/` | A small hand-written protobuf reader and writer, and the messages built with it. |
-| `Spotifly/AudioOutput.swift` | The output: an `AVPlayer` playing the pushed PCM as one CAF stream served by a resource loader, whose `enqueue` suspends until the player wants more audio — the only pacing there is. Being an `AVPlayer`, the AirPlay picker can route it alone to a receiver; Spatial Audio is allowed for stereo. See `plans/done/avplayer-output.md`. |
+| `Spotifly/AudioOutput.swift` | The output: an `AVPlayer` playing the pushed PCM as one CAF stream served by a resource loader, whose `enqueue` suspends until the player wants more audio — the only pacing there is. It is the built-in player's output; Spatial Audio is allowed for stereo. See `plans/done/avplayer-output.md`. |
 | `Spotifly/Vendor/` | libogg 1.3.5 and libvorbis 1.3.7, unmodified, compiled by Xcode — see `Vendor/README.md`. |
 
 ## Prerequisites

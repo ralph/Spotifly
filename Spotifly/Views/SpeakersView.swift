@@ -2,7 +2,7 @@
 //  SpeakersView.swift
 //  Spotifly
 //
-//  View for selecting speakers (Spotify Connect and AirPlay)
+//  View for selecting the Spotify Connect device that plays
 //
 
 import SwiftUI
@@ -11,11 +11,6 @@ struct SpeakersView: View {
     @Environment(PlayerModel.self) private var player
     @Environment(AuthViewModel.self) private var authViewModel
     @Environment(PlaybackViewModel.self) private var playbackViewModel
-
-    /// Whether AirPlay is available: only while this Mac is the active device.
-    private var isAirPlayEnabled: Bool {
-        player.isPlayingHere
-    }
 
     var body: some View {
         Form {
@@ -81,19 +76,6 @@ struct SpeakersView: View {
                 Text("speakers.spotify_connect")
             } footer: {
                 Text("speakers.spotify_connect_hint")
-            }
-
-            // Where AirPlay is chosen: the bar's picker, the one picker there is, which a second
-            // here would take from the bar (`AirPlayRoutePickerView`). No device name: the Mac's
-            // default output is not where Spotifly plays once routed, and nothing reports the
-            // player's route.
-            Section {
-                Label("speakers.airplay_in_bar", systemImage: "airplay.audio")
-                    .foregroundStyle(isAirPlayEnabled ? .primary : .secondary)
-            } header: {
-                Text("speakers.audio_output")
-            } footer: {
-                Text(isAirPlayEnabled ? "speakers.airplay_hint" : "speakers.airplay_disabled_hint")
             }
 
             ConnectionSection {

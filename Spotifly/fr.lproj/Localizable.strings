@@ -197,18 +197,12 @@
 "device_type.automobile" = "Voiture";
 "speakers.empty" = "Aucun appareil trouvé";
 "speakers.empty_hint" = "Ouvrez Spotify sur un autre appareil pour le voir ici";
-"speakers.audio_output" = "AirPlay";
-"speakers.airplay_in_bar" = "Choisissez un récepteur avec le bouton AirPlay de la barre de lecture.";
 "speakers.spotify_connect" = "Spotify Connect";
-"speakers.airplay_hint" = "N'envoie que Spotifly au récepteur ; les autres sons restent sur ce Mac. Le volume du récepteur se règle dans le menu AirPlay.";
-"now_playing.airplay" = "AirPlay";
-"speakers.airplay_disabled_hint" = "AirPlay est uniquement disponible lorsque Spotifly est l'appareil actif";
 "speakers.spotify_connect_hint" = "Affiche tous les appareils connectés à votre compte en ce moment.";
 
 /* Volume */
 "volume.device_controls_itself %@" = "%@ règle son volume lui-même";
 "volume.title" = "Volume";
-"volume.airplay_help" = "Volume. Celui d'un récepteur AirPlay se règle dans le menu AirPlay.";
 
 /* Menu Commands */
 "menu.playback" = "Lecture";
