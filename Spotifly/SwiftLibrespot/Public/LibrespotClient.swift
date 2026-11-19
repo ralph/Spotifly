@@ -2,7 +2,7 @@
 //  LibrespotClient.swift
 //  SwiftLibrespot
 //
-//  The Spotify Connect controller behind the app's SpotifyPlayer facade.
+//  The Spotify Connect controller the app talks to, as `LibrespotClient.shared`.
 //
 //  Everything user-facing reads the snapshots this client publishes; it owns
 //  the machinery that produces them: one session (dealer, Spirc), which
@@ -16,7 +16,7 @@ import Synchronization
 /// Main client for Swift librespot.
 ///
 /// An actor: every control call serializes here. The latest snapshot sits
-/// behind a lock, readable synchronously by the facade without awaiting.
+/// behind a lock, readable synchronously without awaiting.
 public actor LibrespotClient {
     // MARK: - Singleton
 
@@ -42,7 +42,7 @@ public actor LibrespotClient {
 
     // MARK: - Snapshots (what the app shows)
 
-    /// The latest snapshot, which the facade's synchronous reads use.
+    /// The latest snapshot, which the synchronous reads use.
     private nonisolated let latest = Mutex(PlayerSnapshot())
 
     /// Every change, for the one consumer that shows them. One that falls
@@ -200,9 +200,9 @@ public actor LibrespotClient {
         await session?.forgetCredentials()
     }
 
-    // MARK: - Synchronous State (read by the facade without awaiting)
+    // MARK: - Synchronous State (read without awaiting)
 
-    /// Connection bookkeeping the synchronous facade reads. The actor updates
+    /// Connection bookkeeping `forceReconnectSync` reads. The actor updates
     /// it; one lock around check-and-set keeps reconnects from doubling up.
     private nonisolated struct Flags {
         var hasSession = false
@@ -227,6 +227,10 @@ public actor LibrespotClient {
     /// Starts rebuilding the session if it is down, without blocking: the
     /// outcome says whether recovery began, was already under way, or is
     /// pointless, and the work itself continues in a task.
+    ///
+    /// Preferred over `PlaybackViewModel.forceReinitialize` wherever a session may exist:
+    /// reinitializing tears the session down first, which invalidates any recovery already
+    /// working the problem.
     nonisolated func forceReconnectSync() -> ForceReconnectOutcome {
         let outcome = flags.withLock { $0.beginRecovery() }
         if outcome == .started {

@@ -362,7 +362,7 @@ final class PlaybackViewModel {
             // what it built. A session that dropped since leaves the flag false, so the next
             // caller retries, and the client's recovery is adopted if it gets there first
             // (`adoptConnectedSession`).
-            isInitialized = SpotifyPlayer.isSessionConnected
+            isInitialized = LibrespotClient.shared.currentConnectionState?.sessionConnected == true
             if isInitialized {
                 errorMessage = nil
             } else {
@@ -393,7 +393,7 @@ final class PlaybackViewModel {
     /// Forgets after the teardown, whose last report has no playback: a report still on its
     /// way would otherwise put the track back, and one without playback keeps it.
     private func endSession() async {
-        await SpotifyPlayer.shutdownAndCleanup()
+        await LibrespotClient.shared.shutdownAndCleanup()
         clearPlaybackState()
     }
 
@@ -902,14 +902,14 @@ final class PlaybackViewModel {
     private func systemWillSleep() {
         systemWillSleepAt = Date()
         debugLog("PlaybackViewModel", "System will sleep, disconnecting from Spotify")
-        SpotifyPlayer.disconnect()
+        Task { await LibrespotClient.shared.disconnect() }
     }
 
-    /// Reconnects rather than rebuilds; see `SpotifyPlayer.forceReconnect`. A rebuild that then
+    /// Reconnects rather than rebuilds; see `LibrespotClient.forceReconnectSync`. A rebuild that then
     /// failed would also leave nothing retrying.
     private func systemDidWake() {
         systemWillSleepAt = nil
-        switch SpotifyPlayer.forceReconnect() {
+        switch LibrespotClient.shared.forceReconnectSync() {
         case .started, .alreadyRecovering:
             debugLog("PlaybackViewModel", "System wake detected, reconnect under way")
         case .noSession:

@@ -2,12 +2,13 @@
 //  SpotifyPlayer.swift
 //  Spotifly
 //
-//  The Spotify Connect facade the app speaks to.
+//  What the Connect session publishes, and the two calls that bind it to the account.
 //
-//  A static namespace over `LibrespotClient.shared` for the session and the few
-//  reads that must be synchronous. What the UI shows of the player it reads
-//  from `PlayerModel`, which the client's snapshots feed. Playback commands go
-//  over connect-state (`PlaybackViewModel`), to Soloist or another device.
+//  The snapshot types the client yields, and `SpotifyPlayer`, which starts the session with
+//  the keymaster grant and forgets it at logout. Everything else goes to
+//  `LibrespotClient.shared` directly. What the UI shows of the player it reads from
+//  `PlayerModel`, which the client's snapshots feed. Playback commands go over connect-state
+//  (`PlaybackViewModel`), to Soloist or another device.
 //
 
 import Foundation
@@ -71,7 +72,7 @@ nonisolated struct LibrespotConnectionState: Equatable {
 /// Everything the player tells the app, as of one moment.
 ///
 /// The client yields one on every change, to the one consumer that shows them:
-/// `PlayerModel`. The facade's synchronous reads use the latest one.
+/// `PlayerModel`. The client's synchronous reads use the latest one.
 nonisolated struct PlayerSnapshot: Equatable {
     var connection: LibrespotConnectionState?
     /// The Connect devices; nil until the first cluster has arrived.
@@ -87,8 +88,6 @@ nonisolated struct PlayerSnapshot: Equatable {
 }
 
 enum SpotifyPlayer {
-    // MARK: - Lifecycle
-
     /// Initializes the session that controls playback: the dealer socket and the Spirc
     /// registration of a hidden device that does not play. Spotify's Soloist plays for this
     /// Mac (`SoloistEngine`).
@@ -96,56 +95,9 @@ enum SpotifyPlayer {
     /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle, and the client is
     /// told where its credentials come from: the keymaster grant, with the client token
     /// spclient requires.
-    @SpotifyPlayerActor
     static func initialize() async throws {
         try await LibrespotClient.shared.initialize(httpCredentials: .live)
     }
-
-    /// Shuts down, which takes this device off Spotify Connect. Call this when the app is
-    /// quitting.
-    ///
-    /// Awaitable so callers can order it against a rebuild of the same global player, and
-    /// so the quit can wait for it.
-    static func shutdown() async {
-        await LibrespotClient.shared.shutdown()
-    }
-
-    /// Leaves Spotify Connect, then releases everything and clears every
-    /// replaying publisher.
-    ///
-    /// The replay subjects are right within a session and wrong across a
-    /// logout: the next account's services must not be handed the previous
-    /// account's devices, queue or playback state. Subscribers treat nil as
-    /// "nothing to say".
-    nonisolated static func shutdownAndCleanup() async {
-        await LibrespotClient.shared.shutdownAndCleanup()
-    }
-
-    /// Disconnects without preventing future reconnection.
-    /// Use this before system sleep - the device disappears from Spotify immediately,
-    /// but forceReconnect() can still bring it back on wake.
-    static func disconnect() {
-        Task { await LibrespotClient.shared.disconnect() }
-    }
-
-    /// Asks the client to reconnect, without tearing down what it already has.
-    ///
-    /// Preferred over `PlaybackViewModel.forceReinitialize` wherever a session may exist:
-    /// reinitialize runs a destructive cleanup first, which invalidates any reconnect loop
-    /// currently working the problem.
-    @discardableResult
-    static func forceReconnect() -> LibrespotClient.ForceReconnectOutcome {
-        LibrespotClient.shared.forceReconnectSync()
-    }
-
-    // MARK: - Synchronous State
-
-    /// Whether the session is currently connected and ready for playback commands.
-    static var isSessionConnected: Bool {
-        LibrespotClient.shared.currentConnectionState?.sessionConnected == true
-    }
-
-    // MARK: - Streaming Credentials
 
     /// Removes the credentials so neither a recovery nor the next launch can connect the
     /// account that just logged out: the session's, and the keymaster tokens in the keychain,
@@ -154,36 +106,4 @@ enum SpotifyPlayer {
         await LibrespotClient.shared.clearStreamingCredentials()
         await KeymasterSession.shared.clear()
     }
-
-    // MARK: - Transfer
-
-    /// Hands playback to a Connect device, Soloist included, from whichever device holds it.
-    ///
-    /// Goes over connect-state, beside every other Connect command this app sends. It used to
-    /// go to `PUT /me/player` on `api.spotify.com` with the keymaster token, which cannot work:
-    /// that grant uses the desktop client id, and Spotify answers it with 429 on every Web API
-    /// endpoint.
-    /// - Parameter deviceId: The target device ID to transfer playback to
-    /// - Returns: `true` if the transfer was accepted.
-    static func transferPlayback(to deviceId: String) async -> Bool {
-        // The session's own device, which the backend does not check; it derives the source
-        // from the session.
-        guard let from = LibrespotClient.shared.currentConnectionState?.deviceId, !from.isEmpty, !deviceId.isEmpty else {
-            debugLog("SpotifyPlayer", "Transfer skipped: no local device id yet")
-            return false
-        }
-
-        do {
-            try await SpclientAPI().transferPlayback(from: from, to: deviceId)
-            return true
-        } catch {
-            debugLog("SpotifyPlayer", "Transfer to \(deviceId) failed: \(error.localizedDescription)")
-            return false
-        }
-    }
-}
-
-@globalActor
-actor SpotifyPlayerActor {
-    static let shared = SpotifyPlayerActor()
 }

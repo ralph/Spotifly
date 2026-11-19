@@ -64,7 +64,7 @@ final class DeviceService {
 
         // One way for every device, this Mac's too: it is Soloist (`PlayerModel.thisMacDeviceId`),
         // listed like any other, while the session's own device is hidden and plays nothing.
-        let accepted = await SpotifyPlayer.transferPlayback(to: device.id)
+        let accepted = await transfer(to: device.id)
 
         // The transfer can fail: no local device id yet, or connect-state refusing the
         // command. Roll the optimistic update back rather than leaving the UI showing a
@@ -85,6 +85,30 @@ final class DeviceService {
         // Nothing to schedule: the transfer changes the cluster, and the cluster pushes the
         // new device list and active device back on its own.
         return true
+    }
+
+    /// Hands playback to a Connect device, Soloist included, from whichever device holds it.
+    ///
+    /// Goes over connect-state, beside every other Connect command this app sends. It used to
+    /// go to `PUT /me/player` on `api.spotify.com` with the keymaster token, which cannot work:
+    /// that grant uses the desktop client id, and Spotify answers it with 429 on every Web API
+    /// endpoint.
+    /// - Returns: `true` if the transfer was accepted.
+    private func transfer(to deviceId: String) async -> Bool {
+        // The session's own device, which the backend does not check; it derives the source
+        // from the session.
+        guard let from = player.ownDeviceId, !from.isEmpty, !deviceId.isEmpty else {
+            debugLog("DeviceService", "Transfer skipped: no local device id yet")
+            return false
+        }
+
+        do {
+            try await SpclientAPI().transferPlayback(from: from, to: deviceId)
+            return true
+        } catch {
+            debugLog("DeviceService", "Transfer to \(deviceId) failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     // MARK: - Helpers

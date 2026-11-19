@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         Task {
             async let soloist: Void = SoloistEngine.shared.stop()
-            await SpotifyPlayer.shutdown()
+            await LibrespotClient.shared.shutdown()
             await soloist
             allowTermination()
         }
