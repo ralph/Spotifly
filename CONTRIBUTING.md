@@ -3,9 +3,9 @@
 ## Setup
 
 Clone this repository and open `Spotifly.xcodeproj`. That is all: there is nothing to
-check out beside it and nothing to build first. Playback and Spotify Connect are
-implemented in Swift under `Spotifly/SwiftLibrespot/`, and the Ogg Vorbis decoder is
-vendored C under `Spotifly/Vendor/`.
+check out beside it and nothing to build first. The app is Swift throughout. Spotify's
+Soloist plays: the app downloads it and runs it as a child process (`Spotifly/Soloist/`).
+`Spotifly/SwiftLibrespot/` is the Spotify Connect controller. It plays nothing.
 
 [DEVELOPMENT.md](DEVELOPMENT.md) covers building, testing and debugging, and
 [AGENTS.md](AGENTS.md) the conventions the code follows.
