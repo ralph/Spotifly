@@ -480,9 +480,7 @@ final class PlaybackViewModel {
     /// cluster reports what it plays, and the bar and the queue follow it through the player
     /// model.
     private func start(_ command: ConnectCommand) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
+        await initializeIfNeeded()
 
         guard let deviceId = playbackDevice(activeDeviceId: player.activeDeviceId) else { return }
         guard let from = commandSource else {
@@ -503,9 +501,7 @@ final class PlaybackViewModel {
     }
 
     func addToQueue(uri: String) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
+        await initializeIfNeeded()
 
         guard isInitialized else {
             errorMessage = String(localized: "error.player_not_initialized")
