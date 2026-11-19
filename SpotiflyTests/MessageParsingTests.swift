@@ -265,6 +265,20 @@ struct ConnectMessageParsingTests {
         #expect(refusing.supportedTypes == ["audio/track"])
     }
 
+    /// `Capabilities.hidden` is field 12 in connect.proto. A hidden device is one no device
+    /// list offers as a speaker, so Speakers leaves it out.
+    @Test func `a hidden device says so`() {
+        let hidden = ConnectCapabilities.parse(from: ProtobufWriter.message {
+            $0.bool(field: 12, true)
+        })
+        let shown = ConnectCapabilities.parse(from: ProtobufWriter.message {
+            $0.bool(field: 2, true)
+        })
+
+        #expect(hidden.hidden)
+        #expect(!shown.hidden)
+    }
+
     @Test func `track metadata goes out in key order`() {
         var track = ProvidedTrack(uri: "spotify:track:abc")
         track.metadata = ["c": "3", "a": "1", "b": "2"]

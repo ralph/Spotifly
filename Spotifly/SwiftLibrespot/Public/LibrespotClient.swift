@@ -43,6 +43,11 @@ public actor LibrespotClient {
     /// album. A handover names its row by uid, and pathfinder's album answer has them.
     private var contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])?
 
+    /// Whether this session plays here. Not while Spotify's Soloist plays for this Mac: the
+    /// session then only watches and commands, and its device registers hidden, as one that
+    /// cannot play does.
+    private var playsHere = true
+
     /// Whether this Mac may play for the account, as the last login found.
     private var streams = true
 
@@ -148,11 +153,13 @@ public actor LibrespotClient {
         usernameProvider: @escaping @Sendable () async -> String?,
         contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])? = nil,
         volume: Double,
+        playsHere: Bool = true,
     ) async throws {
         logicalVolume = Self.logicalVolume(volume)
         self.httpCredentials = httpCredentials
         self.usernameProvider = usernameProvider
         self.contextRowUids = contextRowUids
+        self.playsHere = playsHere
         shuttingDown = false
         let generation = lifecycleGeneration
 
@@ -167,7 +174,9 @@ public actor LibrespotClient {
             throw LibrespotError.invalidState("Initialization superseded")
         }
 
-        let newSession = LibrespotSession(deviceInfo: deviceInfo)
+        var registered = deviceInfo
+        registered.supportsPlayback = deviceInfo.supportsPlayback && playsHere
+        let newSession = LibrespotSession(deviceInfo: registered)
         session = newSession
         subscribeToSession(newSession)
 
@@ -554,14 +563,6 @@ public actor LibrespotClient {
         let start = PlaybackQueue.start(in: tracks, index: index, uri: uri, uid: uid, uids: uids)
         let row = index == nil && uri == nil ? firstPlayable(in: start.tracks) : start.index
         return (start.tracks, start.uids, row, nil)
-    }
-
-    /// Song radio for a seed track, resolved through its station context.
-    public func playRadio(trackUri: String) async throws {
-        guard let id = SpotifyAPI.parseTrackURI(trackUri) ?? Self.trackIdOnly(from: trackUri) else {
-            throw LibrespotError.trackNotFound("Not a track uri")
-        }
-        try await play(uriOrUrl: "spotify:station:track:\(id)")
     }
 
     // MARK: - Playback: Transport
@@ -2037,11 +2038,6 @@ public actor LibrespotClient {
             return "spotify:track:\(id)"
         }
         return trimmed
-    }
-
-    private static func trackIdOnly(from uri: String) -> String? {
-        guard let range = uri.range(of: "spotify:track:") else { return nil }
-        return String(uri[range.upperBound...])
     }
 }
 

@@ -582,7 +582,9 @@ public actor SpircController {
     /// Takes a cluster — pushed by the dealer or returned by PutState — as the
     /// current truth and publishes it.
     private func adopt(_ cluster: Cluster) {
-        let devices = cluster.devices.map { deviceId, deviceInfoProto in
+        // A hidden device is one no device list offers as a speaker, as Spotify's own apps do
+        // not: an idle web player, or a session registered as one that cannot play.
+        let devices = cluster.devices.filter { !$0.value.capabilities.hidden }.map { deviceId, deviceInfoProto in
             ClusterState.ConnectedDevice(
                 id: deviceId,
                 name: deviceInfoProto.name,

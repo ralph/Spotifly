@@ -197,18 +197,12 @@
 "device_type.automobile" = "Auto";
 "speakers.empty" = "Keine Lautsprecher gefunden";
 "speakers.empty_hint" = "Öffne Spotify auf einem anderen Gerät, um es hier zu sehen";
-"speakers.audio_output" = "AirPlay";
-"speakers.airplay_in_bar" = "Wähle einen Empfänger mit der AirPlay-Taste in der Wiedergabeleiste.";
 "speakers.spotify_connect" = "Spotify Connect";
-"speakers.airplay_hint" = "Sendet nur Spotifly an den Empfänger; alle anderen Töne bleiben auf diesem Mac. Die Lautstärke des Empfängers stellst du im AirPlay-Menü ein.";
-"now_playing.airplay" = "AirPlay";
-"speakers.airplay_disabled_hint" = "AirPlay ist nur verfügbar, wenn Spotifly das aktive Gerät ist";
 "speakers.spotify_connect_hint" = "Zeigt alle Geräte, die gerade mit deinem Konto verbunden sind.";
 
 /* Lautstärke */
 "volume.device_controls_itself %@" = "%@ regelt die Lautstärke selbst";
 "volume.title" = "Lautstärke";
-"volume.airplay_help" = "Lautstärke. Die eines AirPlay-Empfängers stellst du in der AirPlay-Auswahl ein.";
 
 /* Menu Commands */
 "menu.playback" = "Wiedergabe";
@@ -341,3 +335,22 @@
 "common.cancel" = "Abbrechen";
 "auth.enable_playback_failed_title" = "Dieser Mac wurde nicht aktiviert";
 "auth.enable_playback_wrong_account" = "Dieses Spotify-Konto ist nicht das, mit dem du angemeldet bist. Melde dich im Browser mit demselben Konto an und versuche es erneut.";
+"soloist.status" = "Status";
+"soloist.status.off" = "Aus";
+"soloist.status.installing" = "Wird von Spotify geladen …";
+"soloist.status.starting" = "Startet …";
+"soloist.status.pairing" = "Wähle „Spotifly“ einmal in der Spotify-App auf deinem Handy, im selben Netzwerk.";
+"soloist.status.ready" = "Bereit";
+"soloist.status.playing" = "Spielt";
+"soloist.turn_off" = "Eingebauten Player verwenden";
+"soloist.key" = "Soloist-Key";
+"soloist.get_key" = "Key bei Spotify holen";
+"soloist.use" = "Laden und verwenden";
+"soloist.footer" = "Soloist ist Spotifys eigener Player. Spotifly lädt ihn von Spotify und startet ihn; er spielt über die Tonausgabe dieses Macs.";
+"soloist.not_ready" = "Soloist ist noch nicht bereit. Siehe Einstellungen → Wiedergabe.";
+"soloist.error.download %lld" = "Spotifys Download-Server antwortete mit %lld.";
+"soloist.error.unpack" = "Soloist ließ sich nicht entpacken oder starten.";
+"soloist.error.signature" = "Der Download ist nicht von Spotify signiert und wurde deshalb nicht gestartet.";
+"soloist.error.expired" = "Spotifys Soloist-Version ist abgelaufen. Versuche es später noch einmal.";
+"soloist.error.no_key" = "Gib deinen Soloist-Key ein.";
+"soloist.error.keeps_stopping" = "Soloist beendet sich immer wieder. Prüfe den Key und schalte Soloist aus und wieder ein.";

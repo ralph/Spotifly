@@ -197,18 +197,12 @@
 "device_type.automobile" = "Voiture";
 "speakers.empty" = "Aucun appareil trouvé";
 "speakers.empty_hint" = "Ouvrez Spotify sur un autre appareil pour le voir ici";
-"speakers.audio_output" = "AirPlay";
-"speakers.airplay_in_bar" = "Choisissez un récepteur avec le bouton AirPlay de la barre de lecture.";
 "speakers.spotify_connect" = "Spotify Connect";
-"speakers.airplay_hint" = "N'envoie que Spotifly au récepteur ; les autres sons restent sur ce Mac. Le volume du récepteur se règle dans le menu AirPlay.";
-"now_playing.airplay" = "AirPlay";
-"speakers.airplay_disabled_hint" = "AirPlay est uniquement disponible lorsque Spotifly est l'appareil actif";
 "speakers.spotify_connect_hint" = "Affiche tous les appareils connectés à votre compte en ce moment.";
 
 /* Volume */
 "volume.device_controls_itself %@" = "%@ règle son volume lui-même";
 "volume.title" = "Volume";
-"volume.airplay_help" = "Volume. Celui d'un récepteur AirPlay se règle dans le menu AirPlay.";
 
 /* Menu Commands */
 "menu.playback" = "Lecture";
@@ -341,3 +335,22 @@
 "common.cancel" = "Annuler";
 "auth.enable_playback_failed_title" = "Ce Mac n'a pas été activé";
 "auth.enable_playback_wrong_account" = "Ce compte Spotify n'est pas celui avec lequel vous êtes connecté. Connectez le navigateur au même compte, puis réessayez.";
+"soloist.status" = "État";
+"soloist.status.off" = "Désactivé";
+"soloist.status.installing" = "Téléchargement depuis Spotify…";
+"soloist.status.starting" = "Démarrage…";
+"soloist.status.pairing" = "Choisissez « Spotifly » une fois dans l'app Spotify de votre téléphone, sur le même réseau.";
+"soloist.status.ready" = "Prêt";
+"soloist.status.playing" = "Lecture";
+"soloist.turn_off" = "Utiliser le lecteur intégré";
+"soloist.key" = "Clé Soloist";
+"soloist.get_key" = "Obtenir une clé chez Spotify";
+"soloist.use" = "Télécharger et utiliser";
+"soloist.footer" = "Soloist est le lecteur de Spotify. Spotifly le télécharge depuis Spotify et le lance ; il joue sur la sortie audio de ce Mac.";
+"soloist.not_ready" = "Soloist n'est pas encore prêt. Voir Réglages → Lecture.";
+"soloist.error.download %lld" = "Le serveur de téléchargement de Spotify a répondu %lld.";
+"soloist.error.unpack" = "Soloist n'a pas pu être décompressé ni lancé.";
+"soloist.error.signature" = "Le téléchargement n'est pas signé par Spotify ; il n'a pas été lancé.";
+"soloist.error.expired" = "La version de Soloist de Spotify a expiré. Réessayez plus tard.";
+"soloist.error.no_key" = "Saisissez votre clé Soloist.";
+"soloist.error.keeps_stopping" = "Soloist s'arrête sans cesse. Vérifiez la clé, puis désactivez et réactivez-le.";

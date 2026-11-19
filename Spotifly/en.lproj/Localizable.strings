@@ -197,18 +197,12 @@
 "device_type.automobile" = "Car";
 "speakers.empty" = "No speakers found";
 "speakers.empty_hint" = "Open Spotify on another device to see it here";
-"speakers.audio_output" = "AirPlay";
-"speakers.airplay_in_bar" = "Choose a receiver with the AirPlay button in the player bar.";
 "speakers.spotify_connect" = "Spotify Connect";
-"speakers.airplay_hint" = "Sends only Spotifly to the receiver; the rest of the Mac's sound stays here. The receiver's volume is set in the AirPlay menu.";
-"now_playing.airplay" = "AirPlay";
-"speakers.airplay_disabled_hint" = "AirPlay is only available when Spotifly is the active device";
 "speakers.spotify_connect_hint" = "Shows every device connected to your account right now.";
 
 /* Volume */
 "volume.device_controls_itself %@" = "%@ controls its own volume";
 "volume.title" = "Volume";
-"volume.airplay_help" = "Volume. An AirPlay receiver's volume is set in the AirPlay menu.";
 
 /* Menu Commands */
 "menu.playback" = "Playback";
@@ -341,3 +335,22 @@
 "common.cancel" = "Cancel";
 "auth.enable_playback_failed_title" = "This Mac was not enabled";
 "auth.enable_playback_wrong_account" = "That Spotify account is not the one you are signed in with. Sign the browser into the same account and try again.";
+"soloist.status" = "Status";
+"soloist.status.off" = "Off";
+"soloist.status.installing" = "Downloading from Spotify…";
+"soloist.status.starting" = "Starting…";
+"soloist.status.pairing" = "Choose “Spotifly” once in the Spotify app on your phone, on the same network.";
+"soloist.status.ready" = "Ready";
+"soloist.status.playing" = "Playing";
+"soloist.turn_off" = "Use the Built-in Player";
+"soloist.key" = "Soloist Key";
+"soloist.get_key" = "Get a Key from Spotify";
+"soloist.use" = "Download and Use";
+"soloist.footer" = "Soloist is Spotify's own player. Spotifly downloads it from Spotify and runs it; it plays to this Mac's sound output.";
+"soloist.not_ready" = "Soloist is not ready yet. See Settings → Playback.";
+"soloist.error.download %lld" = "Spotify's download server answered %lld.";
+"soloist.error.unpack" = "Soloist could not be unpacked or started.";
+"soloist.error.signature" = "The download is not signed by Spotify, so it was not run.";
+"soloist.error.expired" = "Spotify's Soloist build has expired. Try again later.";
+"soloist.error.no_key" = "Enter your Soloist key.";
+"soloist.error.keeps_stopping" = "Soloist keeps stopping. Check the key, then turn it off and on again.";

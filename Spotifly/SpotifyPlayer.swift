@@ -119,8 +119,7 @@ nonisolated struct PlayerSnapshot: Equatable {
 }
 
 enum SpotifyPlayer {
-    /// The one audio output, which the client's pipeline plays into. Volume and pacing live in
-    /// it, and its player is the one the AirPlay picker routes.
+    /// The one audio output, which the client's pipeline plays into. Volume and pacing live in it.
     nonisolated static let audioOutput = AudioOutput()
 
     // MARK: - Lifecycle
@@ -144,6 +143,8 @@ enum SpotifyPlayer {
             usernameProvider: { await KeymasterSession.shared.username },
             contextRowUids: { uri in await albumRowUids(uri) },
             volume: volume,
+            // Spotify's Soloist plays for this Mac once chosen (`SoloistEngine`).
+            playsHere: !SoloistEngine.isChosen,
         )
     }
 
@@ -315,12 +316,6 @@ enum SpotifyPlayer {
     /// Sets repeat on the local player.
     static func setRepeat(_ mode: PlaybackQueue.RepeatMode) {
         Task { await LibrespotClient.shared.setRepeat(mode) }
-    }
-
-    /// Plays radio for a seed track.
-    /// - Parameter trackUri: The Spotify track URI to use as seed
-    static func playRadio(trackUri: String) async throws {
-        try await LibrespotClient.shared.playRadio(trackUri: trackUri)
     }
 
     // MARK: - Streaming Credentials

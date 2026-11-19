@@ -41,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             endSearchEditing(onClickOf: event)
             return event
         }
+        // This Mac's player, if the user chose Soloist. Not in the unit-test host.
+        if !SpotiflyApp.hostsUnitTests {
+            Task { await SoloistEngine.shared.start() }
+        }
     }
 
     /// Holds the quit until the player has shut down: it tells Spotify where playback
@@ -48,10 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// from `applicationWillTerminate`, the report never got out before the process
     /// ended, so the next launch mirrored the track from wherever Spotify last heard of
     /// it, often its start.
-    /// Two seconds at most, since a PutState on a dead network waits fifteen.
+    /// Two seconds at most, since a PutState on a dead network waits fifteen. Soloist, when it
+    /// is this Mac's player, leaves Spotify Connect meanwhile, and its process ends with the app's.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         Task {
+            async let soloist: Void = SoloistEngine.shared.stop()
             await SpotifyPlayer.shutdown()
+            await soloist
             allowTermination()
         }
         Task {

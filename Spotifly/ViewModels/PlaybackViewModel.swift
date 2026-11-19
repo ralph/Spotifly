@@ -503,6 +503,15 @@ final class PlaybackViewModel {
         case remote(deviceId: String)
         case needsAuthorization
         case needsPremium
+        /// Soloist is this Mac's player, and it is not running or not paired yet.
+        case soloistNotReady
+    }
+
+    /// Soloist's part in where to play (`SoloistEngine`).
+    enum SoloistPlayer: Equatable {
+        case notChosen
+        case ready(deviceId: String)
+        case notReady
     }
 
     /// Decides where to play.
@@ -511,7 +520,23 @@ final class PlaybackViewModel {
     /// connect-state. Only when neither exists is there anything to tell the user —
     /// nagging about local streaming while a phone is playing would be noise — and what
     /// depends on why this Mac cannot play.
-    nonisolated static func playbackTarget(local: LocalPlayback, activeDeviceId: String?) -> PlaybackTarget {
+    ///
+    /// Soloist, once chosen, is this Mac's player and takes local's place: plays go to it over
+    /// connect-state, active or not. While it is not ready, saying so is the answer; the
+    /// built-in player is not used behind its back.
+    nonisolated static func playbackTarget(
+        local: LocalPlayback,
+        activeDeviceId: String?,
+        soloist: SoloistPlayer = .notChosen,
+    ) -> PlaybackTarget {
+        switch soloist {
+        case let .ready(deviceId):
+            return .remote(deviceId: deviceId)
+        case .notReady:
+            return .soloistNotReady
+        case .notChosen:
+            break
+        }
         if local == .ready {
             return .local
         }
@@ -543,7 +568,7 @@ final class PlaybackViewModel {
                 deviceId: deviceId,
             )
 
-        case .needsAuthorization, .needsPremium:
+        case .needsAuthorization, .needsPremium, .soloistNotReady:
             explain(target)
         }
     }
@@ -586,17 +611,14 @@ final class PlaybackViewModel {
                 deviceId: deviceId,
             )
 
-        case .needsAuthorization, .needsPremium:
+        case .needsAuthorization, .needsPremium, .soloistNotReady:
             explain(target)
         }
     }
 
-    /// Starts song radio, which only the local player can do.
-    ///
-    /// Radio is a Spirc feature with no Web API equivalent, so unlike `play` it cannot fall
-    /// back to a remote device. Without a local player the command was previously issued
-    /// anyway and its failure discarded with it, so track cards and context menus silently
-    /// did nothing; asking for authorization is the honest answer.
+    /// Starts song radio: the track's station, a context like any other, played wherever `play`
+    /// plays. The built-in player resolves it as a context, and Spotify's Soloist took it over
+    /// connect-state on 2026-11-19.
     func playRadio(trackUri: String) async {
         // A track Spotify will not play starts nothing, radio included, wherever it is
         // clicked: a search card, a row or its menu.
@@ -604,26 +626,8 @@ final class PlaybackViewModel {
             errorMessage = message
             return
         }
-
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
-
-        // No remote device: radio has no connect-state command.
-        let target = Self.playbackTarget(local: localPlayback, activeDeviceId: nil)
-        guard target == .local else {
-            explain(target)
-            return
-        }
-
-        do {
-            try await SpotifyPlayer.playRadio(trackUri: trackUri)
-        } catch is CancellationError {
-            // Another start overtook this one; it reports for itself.
-        } catch {
-            debugLog("PlaybackViewModel", "Radio for \(trackUri) failed: \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
-        }
+        guard let trackId = SpotifyAPI.parseTrackURI(trackUri) else { return }
+        await play(uriOrUrl: "spotify:station:track:\(trackId)")
     }
 
     /// The uri a remote play request should name.
@@ -664,7 +668,12 @@ final class PlaybackViewModel {
     /// phone is no longer offered and `.needsAuthorization` is the honest answer. Enabling
     /// playback is also the fix, which is what the alert already says.
     private func resolvedPlaybackTarget() -> PlaybackTarget {
-        Self.playbackTarget(local: localPlayback, activeDeviceId: player.activeDeviceId)
+        Self.playbackTarget(local: localPlayback, activeDeviceId: player.activeDeviceId, soloist: soloistPlayer)
+    }
+
+    private var soloistPlayer: SoloistPlayer {
+        guard SoloistEngine.isChosen else { return .notChosen }
+        return SoloistEngine.shared.readyDeviceId.map { .ready(deviceId: $0) } ?? .notReady
     }
 
     /// Says why a play found nowhere to go. Without a session, by offering to authorize.
@@ -673,6 +682,8 @@ final class PlaybackViewModel {
     /// bar and not the notice.
     private func explain(_ target: PlaybackTarget) {
         switch target {
+        case .soloistNotReady:
+            errorMessage = String(localized: "soloist.not_ready")
         case .needsAuthorization:
             needsStreamingAuthorization = true
         case .needsPremium:
@@ -824,6 +835,14 @@ final class PlaybackViewModel {
             command = local
         } else if let route = connectRoute() {
             command = { try await remote(route.from, route.to) }
+        } else if SoloistEngine.isChosen {
+            // Nothing active, and Spotify's Soloist is this Mac's player: the command is its, as
+            // it would be the built-in player's otherwise, and nobody's while it is not ready.
+            guard case let .ready(deviceId) = soloistPlayer, let from = player.ownDeviceId else {
+                explain(.soloistNotReady)
+                return false
+            }
+            command = { try await remote(from, deviceId) }
         } else if SpotifyPlayer.isSessionConnected {
             // Nothing out there to command, so command ourselves. The playback state that
             // follows is reported to Spirc as this device being active, so the Connect role
@@ -1179,7 +1198,7 @@ final class PlaybackViewModel {
     /// takes it; the sleep stops that audio anyway.
     private func pauseFromMediaControls() {
         guard isPlaying else { return }
-        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: SpotifyPlayer.isActiveDevice) {
+        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: player.isPlayingHere) {
             debugLog("PlaybackViewModel", "Pause ignored: the Mac is going to sleep, and another device plays")
             return
         }
@@ -1786,7 +1805,7 @@ final class PlaybackViewModel {
     }
 
     /// This Mac's volume as it was last saved, or half when it never was.
-    private static var savedVolume: Double {
+    static var savedVolume: Double {
         let saved = UserDefaults.standard.double(forKey: "playbackVolume")
         return saved > 0 ? saved : 0.5
     }

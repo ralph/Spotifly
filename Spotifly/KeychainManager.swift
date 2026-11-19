@@ -81,6 +81,20 @@ nonisolated enum KeychainManager {
         delete(key: storedLoginKey, service: storedLoginService)
     }
 
+    // MARK: - Soloist key
+
+    private static let soloistService = "com.spotifly.soloist"
+    private static let soloistKey = "api_key"
+
+    /// The key from Spotify's Soloist dashboard, which Soloist needs to start (`SoloistEngine`).
+    static func saveSoloistKey(_ key: String) throws {
+        try save(key: soloistKey, data: Data(key.utf8), service: soloistService)
+    }
+
+    static func loadSoloistKey() -> String? {
+        load(key: soloistKey, service: soloistService).map { String(decoding: $0, as: UTF8.self) }
+    }
+
     // MARK: - Private Keychain Operations
 
     private static func save(key: String, data: Data, service: String) throws {
