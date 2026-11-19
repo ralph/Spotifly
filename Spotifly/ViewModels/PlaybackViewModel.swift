@@ -616,12 +616,9 @@ final class PlaybackViewModel {
         }
     }
 
-    /// Starts song radio, which only the local player can do.
-    ///
-    /// Radio is a Spirc feature with no Web API equivalent, so unlike `play` it cannot fall
-    /// back to a remote device. Without a local player the command was previously issued
-    /// anyway and its failure discarded with it, so track cards and context menus silently
-    /// did nothing; asking for authorization is the honest answer.
+    /// Starts song radio: the track's station, a context like any other, played wherever `play`
+    /// plays. The built-in player resolves it as a context, and Spotify's Soloist took it over
+    /// connect-state on 2026-11-19.
     func playRadio(trackUri: String) async {
         // A track Spotify will not play starts nothing, radio included, wherever it is
         // clicked: a search card, a row or its menu.
@@ -629,31 +626,8 @@ final class PlaybackViewModel {
             errorMessage = message
             return
         }
-
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
-
-        // No remote device: radio has no connect-state command. Soloist is Spotify's own
-        // player, so it is asked for the track's station as a context instead.
-        let target = Self.playbackTarget(local: localPlayback, activeDeviceId: nil, soloist: soloistPlayer)
-        if case let .remote(deviceId) = target, let trackId = SpotifyAPI.parseTrackURI(trackUri) {
-            await startRemotely(.play(uri: "spotify:station:track:\(trackId)"), deviceId: deviceId)
-            return
-        }
-        guard target == .local else {
-            explain(target)
-            return
-        }
-
-        do {
-            try await SpotifyPlayer.playRadio(trackUri: trackUri)
-        } catch is CancellationError {
-            // Another start overtook this one; it reports for itself.
-        } catch {
-            debugLog("PlaybackViewModel", "Radio for \(trackUri) failed: \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
-        }
+        guard let trackId = SpotifyAPI.parseTrackURI(trackUri) else { return }
+        await play(uriOrUrl: "spotify:station:track:\(trackId)")
     }
 
     /// The uri a remote play request should name.

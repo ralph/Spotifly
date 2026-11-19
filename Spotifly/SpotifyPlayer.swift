@@ -316,12 +316,6 @@ enum SpotifyPlayer {
         Task { await LibrespotClient.shared.setRepeat(mode) }
     }
 
-    /// Plays radio for a seed track.
-    /// - Parameter trackUri: The Spotify track URI to use as seed
-    static func playRadio(trackUri: String) async throws {
-        try await LibrespotClient.shared.playRadio(trackUri: trackUri)
-    }
-
     // MARK: - Streaming Credentials
 
     /// Removes the cached streaming credentials so the next launch cannot connect the

@@ -560,14 +560,6 @@ public actor LibrespotClient {
         return (start.tracks, start.uids, row, nil)
     }
 
-    /// Song radio for a seed track, resolved through its station context.
-    public func playRadio(trackUri: String) async throws {
-        guard let id = SpotifyAPI.parseTrackURI(trackUri) ?? Self.trackIdOnly(from: trackUri) else {
-            throw LibrespotError.trackNotFound("Not a track uri")
-        }
-        try await play(uriOrUrl: "spotify:station:track:\(id)")
-    }
-
     // MARK: - Playback: Transport
 
     public func pause() async {
@@ -2041,11 +2033,6 @@ public actor LibrespotClient {
             return "spotify:track:\(id)"
         }
         return trimmed
-    }
-
-    private static func trackIdOnly(from uri: String) -> String? {
-        guard let range = uri.range(of: "spotify:track:") else { return nil }
-        return String(uri[range.upperBound...])
     }
 }
 
