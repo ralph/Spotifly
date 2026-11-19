@@ -41,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             endSearchEditing(onClickOf: event)
             return event
         }
+        // This Mac's player, if the user chose Soloist. Not in the unit-test host.
+        if !SpotiflyApp.hostsUnitTests {
+            Task { await SoloistEngine.shared.start() }
+        }
     }
 
     /// Holds the quit until the player has shut down: it tells Spotify where playback

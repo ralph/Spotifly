@@ -167,7 +167,11 @@ public actor LibrespotClient {
             throw LibrespotError.invalidState("Initialization superseded")
         }
 
-        let newSession = LibrespotSession(deviceInfo: deviceInfo)
+        // With Soloist chosen, Soloist plays for this Mac, and this session only watches and
+        // commands: its device registers hidden, as one that cannot play does.
+        var registered = deviceInfo
+        registered.supportsPlayback = deviceInfo.supportsPlayback && !SoloistEngine.isChosen
+        let newSession = LibrespotSession(deviceInfo: registered)
         session = newSession
         subscribeToSession(newSession)
 

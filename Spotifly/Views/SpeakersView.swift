@@ -27,9 +27,10 @@ struct SpeakersView: View {
                         Text("speakers.empty_hint")
                     }
                 } else {
-                    let ownDeviceId = player.ownDeviceId
+                    // Soloist plays for this Mac once chosen; this Mac's own device is hidden then.
+                    let thisMacId = SoloistEngine.isChosen ? SoloistEngine.shared.deviceId : player.ownDeviceId
                     ForEach(player.devices) { device in
-                        SpeakerRow(device: device, isThisMac: device.id == ownDeviceId)
+                        SpeakerRow(device: device, isThisMac: device.id == thisMacId)
                     }
                 }
 

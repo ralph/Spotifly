@@ -503,6 +503,15 @@ final class PlaybackViewModel {
         case remote(deviceId: String)
         case needsAuthorization
         case needsPremium
+        /// Soloist is this Mac's player, and it is not running or not paired yet.
+        case soloistNotReady
+    }
+
+    /// Soloist's part in where to play (`SoloistEngine`).
+    enum SoloistPlayer: Equatable {
+        case notChosen
+        case ready(deviceId: String)
+        case notReady
     }
 
     /// Decides where to play.
@@ -511,7 +520,23 @@ final class PlaybackViewModel {
     /// connect-state. Only when neither exists is there anything to tell the user —
     /// nagging about local streaming while a phone is playing would be noise — and what
     /// depends on why this Mac cannot play.
-    nonisolated static func playbackTarget(local: LocalPlayback, activeDeviceId: String?) -> PlaybackTarget {
+    ///
+    /// Soloist, once chosen, is this Mac's player and takes local's place: plays go to it over
+    /// connect-state, active or not. While it is not ready, saying so is the answer; the
+    /// built-in player is not used behind its back.
+    nonisolated static func playbackTarget(
+        local: LocalPlayback,
+        activeDeviceId: String?,
+        soloist: SoloistPlayer = .notChosen,
+    ) -> PlaybackTarget {
+        switch soloist {
+        case let .ready(deviceId):
+            return .remote(deviceId: deviceId)
+        case .notReady:
+            return .soloistNotReady
+        case .notChosen:
+            break
+        }
         if local == .ready {
             return .local
         }
@@ -543,7 +568,7 @@ final class PlaybackViewModel {
                 deviceId: deviceId,
             )
 
-        case .needsAuthorization, .needsPremium:
+        case .needsAuthorization, .needsPremium, .soloistNotReady:
             explain(target)
         }
     }
@@ -586,7 +611,7 @@ final class PlaybackViewModel {
                 deviceId: deviceId,
             )
 
-        case .needsAuthorization, .needsPremium:
+        case .needsAuthorization, .needsPremium, .soloistNotReady:
             explain(target)
         }
     }
@@ -609,8 +634,13 @@ final class PlaybackViewModel {
             await initializeIfNeeded()
         }
 
-        // No remote device: radio has no connect-state command.
-        let target = Self.playbackTarget(local: localPlayback, activeDeviceId: nil)
+        // No remote device: radio has no connect-state command. Soloist is Spotify's own
+        // player, so it is asked for the track's station as a context instead.
+        let target = Self.playbackTarget(local: localPlayback, activeDeviceId: nil, soloist: soloistPlayer)
+        if case let .remote(deviceId) = target, let trackId = SpotifyAPI.parseTrackURI(trackUri) {
+            await startRemotely(.play(uri: "spotify:station:track:\(trackId)"), deviceId: deviceId)
+            return
+        }
         guard target == .local else {
             explain(target)
             return
@@ -664,7 +694,12 @@ final class PlaybackViewModel {
     /// phone is no longer offered and `.needsAuthorization` is the honest answer. Enabling
     /// playback is also the fix, which is what the alert already says.
     private func resolvedPlaybackTarget() -> PlaybackTarget {
-        Self.playbackTarget(local: localPlayback, activeDeviceId: player.activeDeviceId)
+        Self.playbackTarget(local: localPlayback, activeDeviceId: player.activeDeviceId, soloist: soloistPlayer)
+    }
+
+    private var soloistPlayer: SoloistPlayer {
+        guard SoloistEngine.isChosen else { return .notChosen }
+        return SoloistEngine.shared.readyDeviceId.map { .ready(deviceId: $0) } ?? .notReady
     }
 
     /// Says why a play found nowhere to go. Without a session, by offering to authorize.
@@ -673,6 +708,8 @@ final class PlaybackViewModel {
     /// bar and not the notice.
     private func explain(_ target: PlaybackTarget) {
         switch target {
+        case .soloistNotReady:
+            errorMessage = String(localized: "soloist.not_ready")
         case .needsAuthorization:
             needsStreamingAuthorization = true
         case .needsPremium:
@@ -885,7 +922,10 @@ final class PlaybackViewModel {
     /// source from the session, which is why librespot's transfer passes its own id for both
     /// sides — so this is an identifier for their logs rather than a routing decision.
     private func connectRoute() -> (from: String, to: String)? {
-        guard let to = player.activeDeviceId, !to.isEmpty,
+        // With nothing active, a command goes to Soloist when it is this Mac's player, as it
+        // would go to this Mac's own player otherwise.
+        let active = player.activeDeviceId.flatMap { $0.isEmpty ? nil : $0 }
+        guard let to = active ?? SoloistEngine.shared.readyDeviceId,
               let from = player.ownDeviceId, !from.isEmpty
         else { return nil }
 

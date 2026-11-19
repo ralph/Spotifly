@@ -21,7 +21,7 @@ struct PreferencesView: View {
 
             Tab("preferences.playback", systemImage: "speaker.wave.3") {
                 PlaybackSettingsView()
-                    .settingsPage(height: 170)
+                    .settingsPage(height: 380)
             }
 
             Tab("preferences.shortcuts", systemImage: "command") {
@@ -99,9 +99,67 @@ private struct PlaybackSettingsView: View {
             } footer: {
                 Text("preferences.restart_note")
             }
+
+            SoloistSection()
         }
         .formStyle(.grouped)
         .scrollDisabled(true)
+    }
+}
+
+/// Spotify's Soloist as this Mac's player: the key, the download, and where it stands
+/// (`SoloistEngine`).
+private struct SoloistSection: View {
+    @AppStorage("soloistEngine") private var isChosen = false
+    @State private var key = ""
+    private let engine = SoloistEngine.shared
+
+    var body: some View {
+        Section {
+            if isChosen {
+                LabeledContent("soloist.status") {
+                    Text(statusText)
+                        .foregroundStyle(isFailed ? .red : .secondary)
+                }
+                Button("soloist.turn_off") {
+                    Task { await engine.turnOff() }
+                }
+            } else {
+                SecureField("soloist.key", text: $key)
+                HStack {
+                    Link("soloist.get_key", destination: URL(string: "https://developer.spotify.com/dashboard/soloist")!)
+                    Spacer()
+                    Button("soloist.use") {
+                        Task { await engine.choose(key: key) }
+                    }
+                    .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        } header: {
+            Text(verbatim: "Spotify Soloist")
+        } footer: {
+            Text("soloist.footer")
+        }
+    }
+
+    private var isFailed: Bool {
+        if case .failed = engine.status {
+            true
+        } else {
+            false
+        }
+    }
+
+    private var statusText: String {
+        switch engine.status {
+        case .off: String(localized: "soloist.status.off")
+        case .installing: String(localized: "soloist.status.installing")
+        case .starting: String(localized: "soloist.status.starting")
+        case .waitingForPairing: String(localized: "soloist.status.pairing")
+        case .ready where engine.isActive: String(localized: "soloist.status.playing")
+        case .ready: String(localized: "soloist.status.ready")
+        case let .failed(message): message
+        }
     }
 }
 
