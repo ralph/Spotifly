@@ -431,7 +431,7 @@ extension SpircController.ClusterState.ConnectedDevice {
     }
 }
 
-extension SpotifyDeviceType {
+extension DeviceType {
     /// The lowercased type names `/me/player/devices` style payloads use.
     nonisolated var apiName: String {
         switch self {
@@ -442,10 +442,10 @@ extension SpotifyDeviceType {
         case .tv: "tv"
         case .avr: "avr"
         case .stb: "stb"
-        case .audiodongle: "audiodongle"
-        case .gameconsole: "gameconsole"
-        case .castvideo: "castvideo"
-        case .castaudio: "castaudio"
+        case .audioDongle: "audiodongle"
+        case .gameConsole: "gameconsole"
+        case .castVideo: "castvideo"
+        case .castAudio: "castaudio"
         case .automobile: "automobile"
         case .smartwatch: "smartwatch"
         case .chromebook: "chromebook"

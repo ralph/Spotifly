@@ -7,29 +7,6 @@
 
 import Foundation
 
-/// Device type as defined by Spotify Connect protocol
-public enum SpotifyDeviceType: Int, Sendable {
-    case unknown = 0
-    case computer = 1
-    case tablet = 2
-    case smartphone = 3
-    case speaker = 4
-    case tv = 5
-    case avr = 6
-    case stb = 7
-    case audiodongle = 8
-    case gameconsole = 9
-    case castvideo = 10
-    case castaudio = 11
-    case automobile = 12
-    case smartwatch = 13
-    case chromebook = 14
-    case unknownspotify = 100
-    case carThing = 101
-    case observer = 102
-    case homeThing = 103
-}
-
 /// Information about this device for Spotify Connect registration. It registers as one that
 /// does not play (`SpircController.buildDevice`): Spotify's Soloist plays for this Mac.
 public nonisolated struct DeviceInfo: Sendable {
@@ -38,9 +15,6 @@ public nonisolated struct DeviceInfo: Sendable {
 
     /// Human-readable device name shown in Spotify clients
     public let deviceName: String
-
-    /// Device type for Spotify Connect
-    public let deviceType: SpotifyDeviceType
 
     /// Brand name (e.g., "Apple")
     public let brandName: String
@@ -54,14 +28,12 @@ public nonisolated struct DeviceInfo: Sendable {
     public init(
         deviceId: String,
         deviceName: String,
-        deviceType: SpotifyDeviceType = .computer,
         brandName: String = "Apple",
         modelName: String = "Mac",
         softwareVersion: String = "1.0.0",
     ) {
         self.deviceId = deviceId
         self.deviceName = deviceName
-        self.deviceType = deviceType
         self.brandName = brandName
         self.modelName = modelName
         self.softwareVersion = softwareVersion
@@ -73,7 +45,6 @@ public nonisolated struct DeviceInfo: Sendable {
         return DeviceInfo(
             deviceId: deviceId,
             deviceName: name,
-            deviceType: .computer,
             brandName: "Apple",
             modelName: getMacModel(),
             softwareVersion: appVersion,

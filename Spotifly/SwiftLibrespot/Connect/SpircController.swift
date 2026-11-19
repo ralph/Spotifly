@@ -50,7 +50,7 @@ public actor SpircController {
         public struct ConnectedDevice: Sendable, Identifiable {
             public let id: String
             public let name: String
-            public let deviceType: SpotifyDeviceType
+            public let deviceType: DeviceType
             public let isActive: Bool
             public let volume: UInt32
             /// The device says it takes no volume commands. Speakers hides its
@@ -244,7 +244,7 @@ public actor SpircController {
             ClusterState.ConnectedDevice(
                 id: deviceId,
                 name: deviceInfoProto.name,
-                deviceType: SpotifyDeviceType(rawValue: Int(deviceInfoProto.deviceType.rawValue)) ?? .unknown,
+                deviceType: deviceInfoProto.deviceType,
                 isActive: deviceId == cluster.activeDeviceId,
                 volume: deviceInfoProto.volume,
                 disableVolume: deviceInfoProto.capabilities.disableVolume,
