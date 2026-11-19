@@ -331,6 +331,21 @@ nonisolated enum SpotifyURI {
 
     private static let pagedKinds: Set<Substring> = ["track", "album", "artist", "playlist", "show", "episode", "user"]
 
+    /// The track id in a `spotify:track:…` uri or an `open.spotify.com/track/…` link.
+    static func trackId(from uriOrLink: String) -> String? {
+        let trimmed = uriOrLink.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.hasPrefix("spotify:track:") {
+            return String(trimmed.dropFirst("spotify:track:".count))
+        }
+
+        guard let range = trimmed.range(of: "open.spotify.com/track/") else { return nil }
+        // Everything up to the query string, which carries `?si=` share tokens, or a fragment
+        // or a trailing path.
+        let id = trimmed[range.upperBound...].prefix { $0 != "?" && $0 != "/" && $0 != "#" }
+        return id.isEmpty ? nil : String(id)
+    }
+
     /// A `spotify:<kind>:<id>` uri's kind and id, or nil for any other shape.
     private static func parts(of uri: String) -> (kind: Substring, id: Substring)? {
         let parts = uri.split(separator: ":")

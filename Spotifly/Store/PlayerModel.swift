@@ -173,7 +173,7 @@ struct Queue {
     }
 
     private static func entry(from item: QueueItem) -> QueueEntry? {
-        guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
+        guard let trackId = SpotifyURI.trackId(from: item.uri) else { return nil }
         return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider), uid: item.uid)
     }
 }

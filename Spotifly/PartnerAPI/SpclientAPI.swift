@@ -302,7 +302,7 @@ nonisolated struct SpclientAPI: Sendable {
     /// and stopped playback there.
     func queueableTracks(for uri: String, deviceId: String) async throws -> [String] {
         let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let id = SpotifyAPI.parseTrackURI(trimmed) {
+        if let id = SpotifyURI.trackId(from: trimmed) {
             return ["spotify:track:\(id)"]
         }
         return try await resolveContext(trimmed, deviceId: deviceId).tracks
