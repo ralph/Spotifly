@@ -153,7 +153,8 @@ brew install ralph/spotifly/spotifly
 The Release configuration includes:
 - **Optimization Level**: `-O` (Optimize for Speed)
 - **Whole Module Optimization**: Enabled
-- **Architecture**: arm64 only (Apple Silicon)
+- **Architecture**: The standard architectures. The project sets no `ARCHS` or
+  `EXCLUDED_ARCHS`. With the macOS 27 SDK, the standard is arm64 only
 - **Code Signing**: Automatic with Developer ID
 - **Hardened Runtime**: Enabled
 - **App Sandbox**: Off since the change for Spotify's Soloist, which a sandboxed app cannot
