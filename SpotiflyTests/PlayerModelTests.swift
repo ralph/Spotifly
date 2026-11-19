@@ -127,7 +127,7 @@ struct PlayerModelTests {
     @Test func `a connected session shows no stale error`() {
         let model = PlayerModel()
         let connected = LibrespotConnectionState(
-            sessionConnected: true, deviceId: "mac", deviceName: "Spotifly", reconnectAttempt: 0,
+            sessionConnected: true, deviceId: "mac", deviceName: "Spotifly",
             lastError: "Connection lost", connectedSinceMs: 1_000_000,
         )
         model.apply(PlayerSnapshot(connection: connected))

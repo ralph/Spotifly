@@ -109,10 +109,7 @@ public actor LibrespotClient {
 
         await attachTransport()
 
-        flags.withLock {
-            $0.hasEverConnected = true
-            $0.hasSession = true
-        }
+        flags.withLock { $0.hasSession = true }
 
         publishConnectionState(connected: true)
 
@@ -258,14 +255,13 @@ public actor LibrespotClient {
     /// Connection bookkeeping the synchronous facade reads. The actor updates
     /// it; one lock around check-and-set keeps reconnects from doubling up.
     private nonisolated struct Flags {
-        var hasEverConnected = false
         var hasSession = false
         var recovering = false
 
         /// Claims the recovery, unless there is no session to recover or
         /// someone is already at it.
         mutating func beginRecovery() -> ForceReconnectOutcome {
-            guard hasEverConnected, hasSession else { return .noSession }
+            guard hasSession else { return .noSession }
             guard !recovering else { return .alreadyRecovering }
             recovering = true
             return .started
@@ -322,10 +318,8 @@ public actor LibrespotClient {
             // reconnected as the Mac went to sleep and in every dark wake after.
             // A dying socket reports `.failed` first, which is what recovers.
             publishConnectionState(connected: false)
-        case .connecting, .authenticating:
+        case .connecting:
             break
-        case let .reconnecting(attempt):
-            publishConnectionState(connected: false, reconnectAttempt: UInt32(attempt))
         }
     }
 
@@ -454,13 +448,11 @@ public actor LibrespotClient {
     private func publishConnectionState(
         connected: Bool,
         error: String? = nil,
-        reconnectAttempt: UInt32 = 0,
     ) {
         let state = LibrespotConnectionState(
             sessionConnected: connected,
             deviceId: deviceInfo.deviceId,
             deviceName: deviceInfo.deviceName,
-            reconnectAttempt: reconnectAttempt,
             lastError: error,
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
         )

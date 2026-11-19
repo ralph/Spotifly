@@ -185,7 +185,6 @@ extension SpotifyConnection {
             deviceName: state.deviceName,
             isConnected: state.sessionConnected,
             connectedSince: state.connectedSinceMs.map { Date(timeIntervalSince1970: Double($0) / 1000) },
-            reconnectAttempts: state.reconnectAttempt,
             lastError: state.sessionConnected ? nil : state.lastError,
         )
     }

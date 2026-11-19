@@ -269,7 +269,6 @@
 
 /* Connection Status */
 "connection.status" = "Status";
-"connection.reconnect_attempts" = "Wiederverbindungsversuche";
 "connection.device_id" = "Geräte-ID";
 "connection.reconnect" = "Neu verbinden";
 "connection.no_data" = "Keine Verbindungsdaten";

@@ -65,7 +65,6 @@ nonisolated struct LibrespotConnectionState: Equatable {
     let sessionConnected: Bool
     let deviceId: String?
     let deviceName: String
-    let reconnectAttempt: UInt32
     let lastError: String?
     let connectedSinceMs: UInt64?
 }

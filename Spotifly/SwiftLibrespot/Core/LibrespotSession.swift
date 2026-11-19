@@ -12,9 +12,7 @@ import Foundation
 public nonisolated enum SessionState: Sendable, Equatable {
     case disconnected
     case connecting
-    case authenticating
     case connected
-    case reconnecting(attempt: Int)
     case failed(String)
 }
 
@@ -90,8 +88,6 @@ public actor LibrespotSession {
                 throw LibrespotError.connectionFailed("No spclient hosts available")
             }
 
-            updateState(.authenticating)
-
             dealerConnection = DealerConnection(
                 endpoint: dealerHost,
                 credentials: credentials,
@@ -159,10 +155,6 @@ public actor LibrespotSession {
     }
 
     // MARK: - Session Info
-
-    public var isConnected: Bool {
-        state == .connected
-    }
 
     /// The credentials to reconnect with, while the account is signed in; see `credentials`.
     var currentCredentials: SpotifyCredentials? {
