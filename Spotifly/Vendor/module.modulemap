@@ -1,4 +1,0 @@
-module CVorbis {
-    header "CVorbisShim.h"
-    export *
-}

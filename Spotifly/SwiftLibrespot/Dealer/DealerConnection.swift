@@ -9,8 +9,9 @@ import Combine
 import Compression
 import Foundation
 
-/// WebSocket connection to Spotify dealer
-/// Handles SPIRC commands and cluster state updates
+/// WebSocket connection to Spotify dealer, which pushes cluster updates. Requests, the player
+/// commands sent to this device among them, are answered and otherwise left alone: the device
+/// is hidden and plays nothing.
 public actor DealerConnection {
     // MARK: - Properties
 
@@ -41,18 +42,13 @@ public actor DealerConnection {
     private static let pingInterval: Duration = .seconds(30)
     private static let pongTimeout: Duration = .seconds(3)
 
-    /// Message publishers
+    /// Message publisher
     private nonisolated(unsafe) let clusterUpdateSubject = PassthroughSubject<ClusterUpdateProto, Never>()
-    private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
 
     // MARK: - Publishers
 
     public nonisolated var clusterUpdates: AnyPublisher<ClusterUpdateProto, Never> {
         clusterUpdateSubject.eraseToAnyPublisher()
-    }
-
-    public nonisolated var commands: AnyPublisher<SpircRemoteCommand, Never> {
-        commandSubject.eraseToAnyPublisher()
     }
 
     // MARK: - Initialization
@@ -134,7 +130,7 @@ public actor DealerConnection {
     ///
     /// Without this the loop simply exited and `isConnected` stayed true, so
     /// the session went on reporting a healthy Connect while no cluster update
-    /// or remote command could ever arrive again.
+    /// could ever arrive again.
     private func handleSocketDied(_ reason: String) {
         guard isConnected else { return }
         debugLog("DealerConnection", "Socket died: \(reason)")
@@ -155,9 +151,8 @@ public actor DealerConnection {
     /// Sends a JSON message to the dealer — as a **text** frame.
     ///
     /// The dealer closes the connection on a binary one. Every request reply
-    /// went out binary, so each remote command and each transfer took the
-    /// socket down with its own acknowledgement: the session rebuilt, the
-    /// command's sender never heard back, and a transfer failed with 410.
+    /// went out binary, so each request took the socket down with its own
+    /// acknowledgement: the session rebuilt, and the sender never heard back.
     /// librespot sends these as `WsMessage::Text`.
     public func send(_ message: Data) async throws {
         guard let task = webSocketTask, isConnected else {
@@ -296,21 +291,14 @@ public actor DealerConnection {
             }
         } else if uri.starts(with: "hm://connect-state/v1/cluster") {
             await handleClusterUpdate(dealerMsg)
-        } else if uri.starts(with: "hm://connect-state/v1/player/command") {
-            await handleCommand(dealerMsg)
-        } else if uri.starts(with: "hm://connect-state/v1/connect/volume") {
-            await handleVolumeCommand(dealerMsg)
-        } else if uri == "spotify:user:attributes:mutated" {
-            handleAttributesMutation(dealerMsg)
         } else {
             debugLog("DealerConnection", "Unhandled URI: \(uri)")
         }
     }
 
-    /// Handle a request from the server and send a reply.
-    ///
-    /// Requests carry their payload as base64(gzip(JSON)) in `payload.compressed`
-    /// — for commands that is `{message_id, sent_by_device_id, command:{endpoint,…}}`.
+    /// Answers a request from the server, as handled: a command sent to this device, which
+    /// plays nothing, or a cluster update, which is adopted as a pushed one is. Unanswered,
+    /// its sender would wait for an acknowledgement that never comes.
     private func handleRequest(_ message: DealerMessage) async {
         guard let key = message.key else {
             debugLog("DealerConnection", "Request has no key")
@@ -321,58 +309,14 @@ public actor DealerConnection {
             Task { await self.sendReply(key: key, success: true) }
         }
 
-        guard let decoded = Self.decodeCompressedPayload(message.payloadCompressed),
-              let json = try? JSONSerialization.jsonObject(with: decoded) as? [String: Any]
-        else {
-            debugLog("DealerConnection", "Request payload could not be decompressed or parsed")
-            return
-        }
-
-        let messageId = (json["message_id"] as? NSNumber)?.uint32Value
-        let sentBy = json["sent_by_device_id"] as? String
-
-        if let uri = message.uri {
-            if uri.starts(with: "hm://connect-state/v1/player/command"),
-               let commandJson = json["command"] as? [String: Any]
-            {
-                let command = Self.parseCommand(endpoint: commandJson["endpoint"] as? String ?? "", json: commandJson)
-                debugLog("DealerConnection", "Command received: \(commandJson["endpoint"] ?? "?")")
-                // Whole, so a command this app does not handle yet can be
-                // implemented from what Spotify actually sends.
-                if case .unknown = command,
-                   let raw = try? JSONSerialization.data(withJSONObject: commandJson, options: [.sortedKeys])
-                {
-                    debugLog("DealerConnection", "Unhandled command: \(String(decoding: raw, as: UTF8.self))")
-                }
-                // A handover's state whole, as the base64 `TransferState` it came as, since the
-                // parsed one keeps only what this player acts on. `base64 -d | protoc
-                // --decode_raw` reads it.
-                if case .transfer = command, let data = commandJson["data"] as? String {
-                    debugLog("DealerConnection", "Transfer data: \(data)")
-                }
-                commandSubject.send(SpircRemoteCommand(command: command, messageId: messageId, sentByDeviceId: sentBy))
-            } else if uri.starts(with: "hm://connect-state/v1/connect/volume"),
-                      let volume = json["volume"] as? NSNumber
-            {
-                debugLog("DealerConnection", "Volume command: \(volume)")
-                commandSubject.send(SpircRemoteCommand(
-                    command: .setVolume(volume.uint32Value),
-                    messageId: messageId,
-                    sentByDeviceId: sentBy,
-                ))
-            } else if uri.starts(with: "hm://connect-state/v1/cluster") {
-                await handleClusterUpdate(message)
-            }
+        if let uri = message.uri, uri.starts(with: "hm://connect-state/v1/cluster") {
+            await handleClusterUpdate(message)
+        } else {
+            debugLog("DealerConnection", "Request answered, not acted on: \(message.uri ?? "no uri")")
         }
     }
 
-    /// Base64-decodes and gunzips a request payload.
-    static func decodeCompressedPayload(_ compressed: String?) -> Data? {
-        guard let compressed, let raw = Data(base64Encoded: compressed) else { return nil }
-        return decompressGzipData(raw)
-    }
-
-    /// Gunzip helper shared by request payloads and cluster pushes.
+    /// Gunzips a cluster push.
     private nonisolated static func decompressGzipData(_ data: Data) -> Data? {
         guard data.count > 18, data[0] == 0x1F, data[1] == 0x8B else {
             return data.isEmpty ? nil : data
@@ -458,60 +402,6 @@ public actor DealerConnection {
         }
     }
 
-    private func handleCommand(_ message: DealerMessage) async {
-        guard let payloadData = Self.payloadData(from: message, headers: message.headers),
-              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
-        else {
-            debugLog("DealerConnection", "No parsable payload in command message")
-            return
-        }
-
-        let command = Self.parseCommand(endpoint: json["endpoint"] as? String ?? "", json: json)
-        commandSubject.send(SpircRemoteCommand(command: command, messageId: nil, sentByDeviceId: nil))
-    }
-
-    private func handleVolumeCommand(_ message: DealerMessage) async {
-        guard let payloadData = Self.payloadData(from: message, headers: message.headers),
-              let volume = Self.volume(inSetVolumeCommand: payloadData)
-        else {
-            debugLog("DealerConnection", "No volume in volume message")
-            return
-        }
-
-        debugLog("DealerConnection", "Volume command: \(volume)")
-        commandSubject.send(SpircRemoteCommand(command: .setVolume(volume), messageId: nil, sentByDeviceId: nil))
-    }
-
-    private func handleAttributesMutation(_ message: DealerMessage) {
-        guard let payloadData = Self.payloadData(from: message, headers: message.headers) else {
-            debugLog("DealerConnection", "No payload in attributes mutation")
-            return
-        }
-        let names = Self.mutatedAttributes(in: payloadData)
-        debugLog("DealerConnection", "Attributes mutated: \(names)")
-        commandSubject.send(SpircRemoteCommand(command: .userAttributesMutated(names), messageId: nil, sentByDeviceId: nil))
-    }
-
-    /// The names a `UserAttributesMutation` lists: `{ repeated MutatedField fields = 1 { string
-    /// name = 1 }, … }`, as librespot reads it. Measured 2026-10-02: switching autoplay on a
-    /// phone sent one naming `autoplay`, with a timestamp and no value.
-    nonisolated static func mutatedAttributes(in data: Data) -> [String] {
-        ProtobufReader.fields(in: data).filter { $0.number == 1 }.compactMap { $0.fields.last(1)?.string }
-    }
-
-    /// The volume a `SetVolumeCommand` sets, 0…65535.
-    ///
-    /// **The push is protobuf, not JSON** — connect.proto's
-    /// `SetVolumeCommand { int32 volume = 1; … }`, which librespot reads raw.
-    /// It was parsed as JSON, which never succeeded, so a volume set on another
-    /// device never reached this one.
-    nonisolated static func volume(inSetVolumeCommand data: Data) -> UInt32? {
-        guard let field = ProtobufReader.fields(in: data).first(where: { $0.number == 1 && $0.wireType == 0 }) else {
-            return nil
-        }
-        return UInt32(clamping: max(0, min(65535, Int64(Int32(truncatingIfNeeded: field.value)))))
-    }
-
     /// Extract and decompress payload data from a message
     nonisolated static func payloadData(from message: DealerMessage, headers: [String: String]?) -> Data? {
         guard let payloads = message.payloads,
@@ -528,95 +418,6 @@ public actor DealerConnection {
         }
 
         return data
-    }
-
-    /// Parses a player command in the shape librespot's `dealer::protocol::request`
-    /// describes: `{endpoint: "…", …}` with endpoint-specific fields nested
-    /// underneath (`options.seek_to`, `options.skip_to.track_uri`,
-    /// `track.uri`, plain `value` for the toggles).
-    nonisolated static func parseCommand(endpoint: String, json: [String: Any]) -> SpircCommand {
-        let options = json["options"] as? [String: Any]
-
-        switch endpoint {
-        case "play":
-            let context = json["context"] as? [String: Any]
-            let skipTo = options?["skip_to"] as? [String: Any]
-            // An empty uri is no uri. Without one the pages are the list to
-            // play; with one they are only a window, and the uri is resolved.
-            let uri = context?["uri"] as? String ?? ""
-            let pages = context?["pages"] as? [[String: Any]] ?? []
-
-            return .play(SpircCommand.PlayCommand(
-                context: uri.isEmpty
-                    ? .tracks(pages.flatMap { ($0["tracks"] as? [[String: Any]] ?? []).compactMap { $0["uri"] as? String } })
-                    : .uri(uri),
-                trackUri: skipTo?["track_uri"] as? String,
-                trackUid: (skipTo?["track_uid"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                index: (skipTo?["track_index"] as? NSNumber)?.intValue,
-                positionMs: (options?["seek_to"] as? NSNumber)?.uint64Value,
-            ))
-
-        case "pause":
-            return .pause
-
-        case "resume":
-            return .resume
-
-        case "seek_to":
-            let position = (json["value"] as? NSNumber) ?? (json["position"] as? NSNumber) ?? 0
-            return .seekTo(positionMs: position.uint64Value)
-
-        case "skip_next":
-            let track = json["track"] as? [String: Any]
-            return .next(trackUri: track?["uri"] as? String, uid: (track?["uid"] as? String).flatMap { $0.isEmpty ? nil : $0 })
-
-        case "skip_prev":
-            return .prev
-
-        case "set_shuffling_context":
-            return .setShuffle((json["value"] as? Bool) ?? false)
-
-        case "set_repeating_track":
-            return .setRepeat(((json["value"] as? Bool) ?? false) ? .track : .off)
-
-        case "set_repeating_context":
-            return .setRepeat(((json["value"] as? Bool) ?? false) ? .context : .off)
-
-        case "set_options":
-            // What the web player sends for its shuffle and repeat buttons — not
-            // the set_shuffling_context / set_repeating_* above — so those buttons
-            // did nothing here until this was read.
-            return .setOptions(
-                shuffle: json["shuffling_context"] as? Bool,
-                repeatContext: json["repeating_context"] as? Bool,
-                repeatTrack: json["repeating_track"] as? Bool,
-            )
-
-        case "add_to_queue":
-            let track = json["track"] as? [String: Any]
-            return .addToQueue(uri: track?["uri"] as? String ?? "")
-
-        case "set_queue":
-            // Without its list this would read as an emptied queue.
-            guard let next = json["next_tracks"] as? [[String: Any]] else {
-                return .unknown("set_queue without next_tracks")
-            }
-            let queued = next.prefix { $0["provider"] as? String != "context" }
-                .compactMap { $0["uri"] as? String }
-                .filter { !$0.isEmpty }
-            return .setQueue(queuedUris: queued)
-
-        case "transfer":
-            // Sent to the device taking over. `data` is the base64 TransferState:
-            // the context, the track, where it was and whether it was paused.
-            guard let base64 = json["data"] as? String, let data = Data(base64Encoded: base64) else {
-                return .unknown("transfer without data")
-            }
-            return .transfer(TransferState(parsing: data))
-
-        default:
-            return .unknown(endpoint)
-        }
     }
 
     // MARK: - Ping Loop

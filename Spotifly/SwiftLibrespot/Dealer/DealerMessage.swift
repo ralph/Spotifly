@@ -16,9 +16,6 @@ public nonisolated struct DealerMessage: Sendable, Decodable {
     public let uri: String?
     public let headers: [String: String]?
     public let payloads: [DealerPayload]?
-    /// The single compressed payload of a *request*-shaped message:
-    /// `{"payload": {"compressed": "<base64 gzip json>"}}`.
-    public let payloadCompressed: String?
     public let method: String?
     public let key: String?
 
@@ -34,7 +31,6 @@ public nonisolated struct DealerMessage: Sendable, Decodable {
 extension DealerMessage {
     private enum CodingKeys: String, CodingKey {
         case type, uri, headers, payloads, method, key
-        case payload
         case messageIdent = "message_ident"
     }
 
@@ -43,25 +39,14 @@ extension DealerMessage {
         type = try container.decodeIfPresent(String.self, forKey: .type)
         // A request names its topic in `message_ident` (librespot's
         // `WebsocketRequest`), not `uri`. Reading only `uri` routed no request
-        // anywhere: every remote command and every transfer was acknowledged
-        // as handled and then dropped.
+        // anywhere: a cluster update sent as one was acknowledged as handled
+        // and then dropped.
         uri = try container.decodeIfPresent(String.self, forKey: .uri)
             ?? container.decodeIfPresent(String.self, forKey: .messageIdent)
         headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
         payloads = try container.decodeIfPresent([DealerPayload].self, forKey: .payloads)
-
-        if let nested = try? container.nestedContainer(keyedBy: PayloadKeys.self, forKey: .payload) {
-            payloadCompressed = try nested.decodeIfPresent(String.self, forKey: .compressed)
-        } else {
-            payloadCompressed = nil
-        }
-
         method = try container.decodeIfPresent(String.self, forKey: .method)
         key = try container.decodeIfPresent(String.self, forKey: .key)
-    }
-
-    private enum PayloadKeys: String, CodingKey {
-        case compressed
     }
 }
 
@@ -72,8 +57,8 @@ extension DealerMessage {
 /// the form everything here actually arrives in — or a raw byte array, or
 /// arbitrary JSON. Modelling it as `{"payload": "…"}` made every
 /// payload-carrying message throw on decode, which silently took *all* cluster
-/// pushes, remote commands and volume commands with it: the device list never
-/// updated, and this device never learned it had stopped being the active one.
+/// pushes with it: the device list never updated, and the playback shown never
+/// moved on.
 public nonisolated struct DealerPayload: Sendable, Decodable {
     /// The payload's bytes, however the message spelled them, still base64- and
     /// gzip-undone by the caller (`DealerConnection.payloadData`).
@@ -94,76 +79,5 @@ public extension DealerPayload {
             // the surrounding message intact so it still reaches its handler.
             decodedData = nil
         }
-    }
-}
-
-// MARK: - SPIRC Commands
-
-/// A command received from another Spotify client, with the identifiers
-/// needed to acknowledge it through the next PutState.
-public struct SpircRemoteCommand: Sendable {
-    public let command: SpircCommand
-    public let messageId: UInt32?
-    public let sentByDeviceId: String?
-}
-
-/// Commands that can be received from other Spotify clients
-public enum SpircCommand: Sendable {
-    case play(PlayCommand)
-    case pause
-    case resume
-    case seekTo(positionMs: UInt64)
-    /// `skip_next`, naming the track to skip to when a queue row was clicked, and its row's uid
-    /// where the row had one.
-    case next(trackUri: String?, uid: String?)
-    case prev
-    case setVolume(UInt32)
-    case setShuffle(Bool)
-    case setRepeat(RepeatMode)
-    /// `set_options`, which the web player sends for both shuffle and repeat:
-    /// any of the three flags, each only when it changes.
-    case setOptions(shuffle: Bool?, repeatContext: Bool?, repeatTrack: Bool?)
-    case transfer(TransferState)
-    case addToQueue(uri: String)
-    /// `set_queue`, which another device sends when its user edits the queue:
-    /// the whole list of next tracks as it should be now. This carries its
-    /// queue section, everything before the first track the context provides.
-    /// A track moved within that section arrives without a provider. The
-    /// context tracks after it, ten or more of them, are not adopted, so an
-    /// edit there snaps back. Asking other clients not to offer such edits,
-    /// through the player state's `disallow_*_context_tracks` restrictions, was
-    /// tried: the iPhone app went on offering them, and stopped sending drags
-    /// within the queue instead.
-    case setQueue(queuedUris: [String])
-    /// `spotify:user:attributes:mutated`: the account's attributes of these names changed,
-    /// `autoplay` among them when it is switched on another device. It names no values:
-    /// librespot flips the "0" or "1" it keeps, and so does this client.
-    case userAttributesMutated([String])
-    case unknown(String)
-
-    public nonisolated struct PlayCommand: Sendable {
-        /// What to play, as librespot's `PlayContext` has it.
-        public enum Context: Sendable, Equatable {
-            /// An album, playlist or other context to resolve.
-            case uri(String)
-            /// The tracks of a context sent inline, with no uri of its own.
-            case tracks([String])
-        }
-
-        public let context: Context
-        /// `skip_to`'s track, where to start. See `PlaybackQueue.start(in:index:uri:uid:uids:)`.
-        public let trackUri: String?
-        /// `skip_to`'s uid for that row, which names it where the context lists it.
-        public let trackUid: String?
-        /// `skip_to`'s index, as the sender counted.
-        public let index: Int?
-        public let positionMs: UInt64?
-    }
-
-    /// Repeat mode as the wire numbers it.
-    public enum RepeatMode: Int, Sendable {
-        case off = 0
-        case context = 1
-        case track = 2
     }
 }

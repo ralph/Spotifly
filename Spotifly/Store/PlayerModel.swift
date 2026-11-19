@@ -23,7 +23,7 @@ final class PlayerModel {
     /// The streaming session, as the connection dashboard shows it.
     private(set) var connection: SpotifyConnection?
 
-    /// Whichever device is playing: this one, or another one, mirrored.
+    /// Whichever device is playing, Soloist included, mirrored from the cluster.
     private(set) var playback: PlaybackState?
 
     /// The queue around the current track, and the context it plays from.
@@ -37,15 +37,6 @@ final class PlayerModel {
     /// as `queue`, the rows and the queue's context always come from one snapshot. Kept rather
     /// than worked out on each read, because the queue panel reads it once per row.
     private(set) var queueEntries = Queue(nil)
-
-    /// The tracks playback found Spotify withholds this login, which no list had said.
-    private(set) var withheld: Set<String> = []
-
-    /// The logical Connect volume, 0–1; nil until one has been set.
-    private(set) var volume: Double?
-
-    /// The latest skip, or stop over an error, that the client published.
-    private(set) var interruption: PlaybackInterruption?
 
     /// The active Connect device, or nil while none is. A transfer sets it ahead
     /// of the cluster; see `setActiveDevice(_:)`.
@@ -109,15 +100,6 @@ final class PlayerModel {
             queue = snapshot.queue
             queueEntries = Queue(snapshot.queue)
         }
-        if snapshot.withheld != withheld {
-            withheld = snapshot.withheld
-        }
-        if snapshot.volume != volume {
-            volume = snapshot.volume
-        }
-        if snapshot.interruption != interruption {
-            interruption = snapshot.interruption
-        }
         if snapshot.devices != reportedDevices {
             reportedDevices = snapshot.devices
         }
@@ -149,15 +131,14 @@ final class PlayerModel {
 struct QueueEntry {
     let trackId: String
     let provider: TrackProvider
-    /// The row's uid, where it has one: from the cluster while another device plays, and from
-    /// this Mac's own queue otherwise.
+    /// The row's uid, where the cluster gives it one.
     let uid: String?
 }
 
 /// The player's queue as rows of track ids. See `PlayerModel.queueEntries`.
 struct Queue {
-    /// What played before the current track, in play order: the most recent last. From the
-    /// local queue, or from the cluster's `prev_tracks` while another device plays.
+    /// What played before the current track, in play order: the most recent last, from the
+    /// cluster's `prev_tracks`.
     let previousTracks: [QueueEntry]
     let currentTrack: QueueEntry?
     let nextTracks: [QueueEntry]

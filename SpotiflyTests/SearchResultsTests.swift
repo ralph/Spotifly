@@ -26,7 +26,9 @@ struct SearchResultsTests {
 
         store.updatePlaylistDetails(id: "renamed", name: "New name")
         store.removePlaylistFromUserLibrary("deleted")
-        store.setWithheld([withheld.uri])
+        var unplayable = withheld
+        unplayable.playability = .unplayable(reason: nil)
+        store.upsertTracks([unplayable])
 
         let results = try #require(store.searchResults(for: "query"))
         #expect(results.playlistIds.compactMap { store.playlists[$0] }.map(\.name) == ["New name"])

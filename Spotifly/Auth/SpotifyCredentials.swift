@@ -45,8 +45,7 @@ nonisolated struct SpotifyCredentials: Sendable {
     /// Waits before a read is asked for again; see `retryingPassingFailures(_:)`. Injected so
     /// tests do not wait.
     let pause: Pause
-    /// The pauses before a read is asked for again, one per retry: a page's. Playback waits on
-    /// its reads, and sets shorter ones; see `SPClient.retryPauses`.
+    /// The pauses before a read is asked for again, one per retry: a page's.
     var retryPauses: [Duration] = [.seconds(1), .seconds(3)]
 
     /// Signs a request as the desktop client: both credentials, and the headers naming which

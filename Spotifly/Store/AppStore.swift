@@ -19,11 +19,6 @@ final class AppStore {
     /// All tracks indexed by ID - single source of truth
     private(set) var tracks: [String: Track] = [:]
 
-    /// The uris of the tracks here that Spotify said will not play, which playback steps over.
-    private(set) var unplayableTrackUris: Set<String> = []
-    /// What playback reported withheld; see `setWithheld(_:)`.
-    private var withheldTrackUris: Set<String> = []
-
     /// All albums indexed by ID
     private(set) var albums: [String: Album] = [:]
 
@@ -159,36 +154,12 @@ final class AppStore {
         resolvedFavoriteTrackIds.contains(trackId)
     }
 
-    /// Upsert tracks, keeping `unplayableTrackUris` in step. Every answer here says whether a
-    /// track plays: pathfinder's `playability`, and spclient's restriction and alternatives
-    /// (`SpclientTrack.isWithheld`).
+    /// Upsert tracks. Every answer here says whether a track plays: pathfinder's `playability`,
+    /// and spclient's restriction and alternatives (`SpclientTrack.isWithheld`).
     func upsertTracks(_ newTracks: [Track]) {
-        var unplayable = unplayableTrackUris
-        for var track in newTracks {
-            if track.isPlayable, withheldTrackUris.contains(track.uri) {
-                track.playability = .unplayable(reason: nil)
-            }
+        for track in newTracks {
             tracks[track.id] = track
-            if track.isPlayable {
-                unplayable.remove(track.uri)
-            } else {
-                unplayable.insert(track.uri)
-            }
         }
-        // Written only when it changed: every write notifies, and `QueueService` passes it on
-        // to playback.
-        if unplayable != unplayableTrackUris {
-            unplayableTrackUris = unplayable
-        }
-    }
-
-    /// Greys the tracks playback found Spotify withholds, which no list had said: a queue entry
-    /// from a context the app never listed, found out by loading it or by fetching it ahead.
-    /// Kept, so a track the store only gets later is greyed as it arrives.
-    func setWithheld(_ uris: Set<String>) {
-        withheldTrackUris = uris
-        let known = uris.compactMap { SpotifyAPI.parseTrackURI($0).flatMap { tracks[$0] } }
-        upsertTracks(known.filter(\.isPlayable))
     }
 
     /// Upsert a single album. What we already know is never downgraded: a stub

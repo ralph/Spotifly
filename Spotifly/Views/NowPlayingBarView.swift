@@ -311,7 +311,7 @@ struct NowPlayingBarView: View {
         .help(mode == .off && !playbackViewModel.canRepeat ? "repeat.unavailable" : repeatName(mode))
     }
 
-    private func repeatName(_ mode: PlaybackQueue.RepeatMode) -> LocalizedStringKey {
+    private func repeatName(_ mode: RepeatMode) -> LocalizedStringKey {
         switch mode {
         case .off: "repeat.off"
         case .context: "repeat.context"

@@ -136,7 +136,6 @@
 "error.playlist_failed" = "Spotify n'a pas pu charger cette playlist.";
 "error.track_unavailable %@" = "Non disponible sur Spotify : « %@ »";
 "error.track_unavailable_in_country %@" = "Non disponible dans votre pays : « %@ »";
-"playback.skipped_unavailable %@" = "Ignoré, non disponible : « %@ »";
 
 /* Empty States */
 "empty.select_item" = "Sélectionnez un élément dans la barre latérale";

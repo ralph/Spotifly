@@ -204,6 +204,15 @@ func expectMatch(_ encoded: Data?, _ fixture: String) throws {
     #expect(ours == theirs)
 }
 
+// MARK: - Bytes
+
+extension Data {
+    /// The bytes as lowercase hex, for comparing what a writer produced with a recorded value.
+    nonisolated var hexString: String {
+        map { String(format: "%02x", $0) }.joined()
+    }
+}
+
 // MARK: - Fixtures
 
 /// Anchors `Bundle(for:)` to the test bundle, which carries `Fixtures/`.

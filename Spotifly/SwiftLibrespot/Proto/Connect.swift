@@ -10,6 +10,28 @@ import Foundation
 
 // MARK: - Enums
 
+/// Repeat as Spotify's clients have it: off, the context, or the track.
+nonisolated enum RepeatMode: Sendable, Equatable {
+    case off
+    case context
+    case track
+
+    /// The mode two flags name. A track's repeat wins, as clients send both on for it.
+    init(context: Bool, track: Bool) {
+        self = track ? .track : (context ? .context : .off)
+    }
+
+    /// The mode a repeat button steps on to, as on Spotify's clients: off, the context,
+    /// the track, off again.
+    var next: RepeatMode {
+        switch self {
+        case .off: .context
+        case .context: .track
+        case .track: .off
+        }
+    }
+}
+
 /// Member type for PutStateRequest
 public nonisolated enum MemberType: UInt32, Sendable {
     case spircV2 = 0
@@ -213,9 +235,7 @@ public nonisolated struct ConnectDeviceInfo: Sendable {
 
 // MARK: - ProvidedTrack
 
-/// Track in player state
-/// A context's metadata, as the resolver answers it and a player state's `context_metadata`
-/// carries it.
+/// A context's metadata, as a player state's `context_metadata` carries it.
 public nonisolated extension [String: String] {
     /// What the context calls itself: `context_description`, where it is not empty.
     var contextName: String? {
@@ -223,6 +243,7 @@ public nonisolated extension [String: String] {
     }
 }
 
+/// A row of a player state: its track, where it comes from, and its uid.
 public nonisolated struct ProvidedTrack: Sendable {
     public var uri: String = ""
     public var uid: String = ""
@@ -239,23 +260,15 @@ public nonisolated struct ProvidedTrack: Sendable {
         self.provider = provider
     }
 
-    /// Whether other devices leave the row out of the queue they show: a delimiter, or a row
-    /// the context will not play. Kept in `metadata`, as `"hidden": "true"`.
+    /// Whether the sending device leaves the row out of the queue it shows: a delimiter, or a
+    /// row the context will not play. Kept in `metadata`, as `"hidden": "true"`.
     public var isHidden: Bool {
-        get { metadata["hidden"] == "true" }
-        set { metadata["hidden"] = newValue ? "true" : nil }
+        metadata["hidden"] == "true"
     }
 
-    public func serialize() -> Data {
-        ProtobufWriter.message {
-            $0.string(field: 1, uri)
-            $0.nonEmptyString(field: 2, uid)
-            $0.map(field: 3, metadata)
-            $0.nonEmptyString(field: 6, provider)
-            $0.nonEmptyString(field: 8, albumUri)
-            $0.nonEmptyString(field: 10, artistUri)
-        }
-    }
+    /// The row a device lists between two rounds of a context: after it, under repeat, the
+    /// context comes again as its next iteration.
+    static let delimiterUri = "spotify:delimiter"
 
     public static func parse(from data: Data) -> ProvidedTrack {
         var track = ProvidedTrack()
@@ -288,17 +301,6 @@ public nonisolated struct ContextIndex: Sendable, Equatable {
         self.track = track
     }
 
-    public func serialize() -> Data {
-        ProtobufWriter.message {
-            if page != 0 {
-                $0.varint(field: 1, page)
-            }
-            if track != 0 {
-                $0.varint(field: 2, track)
-            }
-        }
-    }
-
     public static func parse(from data: Data) -> ContextIndex {
         var index = ContextIndex()
         for field in ProtobufReader.fields(in: data) {
@@ -322,14 +324,6 @@ public nonisolated struct ContextPlayerOptions: Sendable {
 
     public init() {}
 
-    public func serialize() -> Data {
-        ProtobufWriter.message {
-            $0.flag(field: 1, shufflingContext)
-            $0.flag(field: 2, repeatingContext)
-            $0.flag(field: 3, repeatingTrack)
-        }
-    }
-
     public static func parse(from data: Data) -> ContextPlayerOptions {
         var options = ContextPlayerOptions()
         for field in ProtobufReader.fields(in: data) {
@@ -347,12 +341,10 @@ public nonisolated struct ContextPlayerOptions: Sendable {
 // MARK: - Restrictions
 
 /// What a player or a context does not allow, as `player.proto`'s `Restrictions` names it: the
-/// reasons for each action, where any reason means no. Only what this player reads or keeps to is
-/// modelled.
+/// reasons for each action, where any reason means no. Only what the bar reads is modelled.
 ///
-/// The context resolver names a context's own, in its answer's `restrictions` keyed by the fields'
-/// names. A station's say no to shuffle and to repeating the context, for "radio", measured
-/// 2026-10-02. The web player playing one reported them as its `context_restrictions`, and among its
+/// A station's say no to shuffle and to repeating the context, for "radio", measured 2026-10-02.
+/// The web player playing one reported them as its `context_restrictions`, and among its
 /// `restrictions`, where it added "endless_context" for repeat-one too.
 public nonisolated struct Restrictions: Sendable, Equatable {
     /// `disallow_skipping_next_reasons`, field 7.
@@ -366,24 +358,13 @@ public nonisolated struct Restrictions: Sendable, Equatable {
 
     public init() {}
 
-    /// The fields modelled, by number and by the name the resolver's JSON gives them.
-    private static let fields: [(number: Int, name: String, reasons: WritableKeyPath<Restrictions, [String]> & Sendable)] = [
-        (7, "disallow_skipping_next_reasons", \.skippingNext),
-        (8, "disallow_toggling_repeat_context_reasons", \.togglingRepeatContext),
-        (9, "disallow_toggling_repeat_track_reasons", \.togglingRepeatTrack),
-        (10, "disallow_toggling_shuffle_reasons", \.togglingShuffle),
+    /// The fields modelled, by number.
+    private static let fields: [(number: Int, reasons: WritableKeyPath<Restrictions, [String]> & Sendable)] = [
+        (7, \.skippingNext),
+        (8, \.togglingRepeatContext),
+        (9, \.togglingRepeatTrack),
+        (10, \.togglingShuffle),
     ]
-
-    /// The resolver's `restrictions`: each field by name, a list of reasons.
-    init(json: [String: Any]) {
-        for field in Self.fields {
-            self[keyPath: field.reasons] = json[field.name] as? [String] ?? []
-        }
-    }
-
-    public var isEmpty: Bool {
-        self == Restrictions()
-    }
 
     /// Whether shuffle may be switched on.
     var allowsShuffle: Bool {
@@ -391,21 +372,11 @@ public nonisolated struct Restrictions: Sendable, Equatable {
     }
 
     /// Whether repeat may be set to `mode`. Off always may.
-    func allows(_ mode: PlaybackQueue.RepeatMode) -> Bool {
+    func allows(_ mode: RepeatMode) -> Bool {
         switch mode {
         case .off: true
         case .context: togglingRepeatContext.isEmpty
         case .track: togglingRepeatTrack.isEmpty
-        }
-    }
-
-    public func serialize() -> Data {
-        ProtobufWriter.message { message in
-            for field in Self.fields {
-                for reason in self[keyPath: field.reasons] {
-                    message.string(field: field.number, reason)
-                }
-            }
         }
     }
 
@@ -444,7 +415,7 @@ public nonisolated struct PlayerState: Sendable {
     public var queueRevision: String = ""
     public var position: Int64 = 0
     /// What the device says cannot be done now (field 17), and what its context does not allow
-    /// (field 4). This Mac reports its context's in both, as go-librespot does.
+    /// (field 4). go-librespot reports its context's in both.
     public var restrictions = Restrictions()
     public var contextRestrictions = Restrictions()
 
@@ -455,50 +426,6 @@ public nonisolated struct PlayerState: Sendable {
     }
 
     public init() {}
-
-    public func serialize() -> Data {
-        ProtobufWriter.message {
-            $0.varint(field: 1, timestamp)
-            $0.nonEmptyString(field: 2, contextUri)
-            $0.nonEmptyString(field: 3, contextUrl)
-            if !contextRestrictions.isEmpty {
-                $0.bytes(field: 4, contextRestrictions.serialize())
-            }
-            if let index {
-                $0.bytes(field: 6, index.serialize())
-            }
-            if let track {
-                $0.bytes(field: 7, track.serialize())
-            }
-            $0.nonEmptyString(field: 8, playbackId)
-            if playbackSpeed != 0 {
-                $0.double(field: 9, playbackSpeed)
-            }
-            $0.varint(field: 10, positionAsOfTimestamp)
-            $0.varint(field: 11, duration)
-            $0.flag(field: 12, isPlaying)
-            $0.flag(field: 13, isPaused)
-            $0.flag(field: 14, isBuffering)
-            $0.flag(field: 15, isSystemInitiated)
-            let optionsData = options.serialize()
-            if !optionsData.isEmpty {
-                $0.bytes(field: 16, optionsData)
-            }
-            if !restrictions.isEmpty {
-                $0.bytes(field: 17, restrictions.serialize())
-            }
-            for track in prevTracks {
-                $0.bytes(field: 19, track.serialize())
-            }
-            for track in nextTracks {
-                $0.bytes(field: 20, track.serialize())
-            }
-            $0.map(field: 21, contextMetadata)
-            $0.nonEmptyString(field: 23, sessionId)
-            $0.nonEmptyString(field: 24, queueRevision)
-            $0.varint(field: 25, position)
-        }
-    }
 
     public static func parse(from data: Data) -> PlayerState {
         var state = PlayerState()
@@ -537,23 +464,16 @@ public nonisolated struct PlayerState: Sendable {
 
 // MARK: - Device (for PutStateRequest)
 
-/// Device wrapper containing device info and player state
+/// Device wrapper containing device info. A player state goes beside it only for a device that
+/// plays, which this one does not.
 public nonisolated struct ConnectDevice: Sendable {
     public var deviceInfo: ConnectDeviceInfo = .init()
-    public var playerState: PlayerState?
-    public var transferData: Data?
 
     public init() {}
 
     public func serialize() -> Data {
         ProtobufWriter.message {
             $0.bytes(field: 1, deviceInfo.serialize())
-            if let playerState {
-                $0.bytes(field: 2, playerState.serialize())
-            }
-            if let transferData {
-                $0.bytes(field: 4, transferData)
-            }
         }
     }
 }

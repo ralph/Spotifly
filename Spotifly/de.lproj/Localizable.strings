@@ -136,7 +136,6 @@
 "error.playlist_failed" = "Spotify konnte diese Playlist nicht laden.";
 "error.track_unavailable %@" = "Auf Spotify nicht verfügbar: „%@“";
 "error.track_unavailable_in_country %@" = "In deinem Land nicht verfügbar: „%@“";
-"playback.skipped_unavailable %@" = "Übersprungen, nicht verfügbar: „%@“";
 
 /* Empty States */
 "empty.select_item" = "Wähle ein Element aus der Seitenleiste";

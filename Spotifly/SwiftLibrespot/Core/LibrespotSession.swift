@@ -58,7 +58,6 @@ public actor LibrespotSession {
         case state(SessionState)
         /// A cluster Spirc adopted, pushed by the dealer or returned by PutState.
         case cluster(SpircController.ClusterState)
-        case command(SpircRemoteCommand)
     }
 
     /// The session's states and what Spirc hears, for one consumer, in the
@@ -83,8 +82,7 @@ public actor LibrespotSession {
 
     /// Connects with the given credentials and returns the server welcome,
     /// whose reusable credentials are worth persisting. The dealer's requests
-    /// are signed with `httpCredentials`, and this Mac registers on Spotify
-    /// Connect at `volume`, the logical one (0…65535).
+    /// are signed with `httpCredentials`.
     ///
     /// A session whose device does not play here, as while Spotify's Soloist
     /// plays for this Mac, connects no accesspoint and returns no welcome.
@@ -96,7 +94,6 @@ public actor LibrespotSession {
     func connect(
         credentials: APCredentials,
         signing httpCredentials: SpotifyCredentials,
-        volume: UInt32,
     ) async throws -> APWelcome? {
         self.credentials = credentials
 
@@ -134,8 +131,8 @@ public actor LibrespotSession {
             try await dealerConnection!.connect()
 
             // The dealer is the other half of the session, and losing it is
-            // just as fatal: no cluster updates, no remote commands. Treated
-            // exactly like an accesspoint loss so one recovery path covers both.
+            // just as fatal: no cluster updates. Treated exactly like an
+            // accesspoint loss so one recovery path covers both.
             await dealerConnection!.setCloseHandler { [weak self] in
                 guard let self else { return }
                 Task { await self.handleTransportLost() }
@@ -150,7 +147,6 @@ public actor LibrespotSession {
             spircController = SpircController(
                 deviceInfo: device,
                 dealerConnection: dealerConnection!,
-                volume: volume,
             )
             try await spircController!.initialize()
             setupSpircSubscriptions()
@@ -192,11 +188,8 @@ public actor LibrespotSession {
     /// Disconnects everything but remembers the credentials, so the client's
     /// recovery can `connect` again without them being handed in a second
     /// time — used around system sleep.
-    ///
-    /// - Parameter stopped: what played here, for Spirc to report paused
-    ///   before the disconnect; see `SpircController.shutdown(stopped:)`.
-    public func disconnect(stopped: SpircController.SpircPlayerState? = nil) async {
-        await spircController?.shutdown(stopped: stopped)
+    public func disconnect() async {
+        await spircController?.shutdown()
         await dealerConnection?.disconnect()
         await accesspoint?.disconnect()
 
@@ -241,12 +234,7 @@ public actor LibrespotSession {
         credentials
     }
 
-    /// The accesspoint while the session is up; nil while it reconnects.
-    var connectedAccesspoint: Accesspoint? {
-        state == .connected ? accesspoint : nil
-    }
-
-    /// SPClient host for track metadata and CDN resolution
+    /// The spclient host, where contexts are resolved.
     public var spclientHost: String? {
         resolvedEndpoints?.spclients.first
     }
@@ -266,31 +254,5 @@ public actor LibrespotSession {
             .compactMap(\.self)
             .sink { [eventSink] in eventSink.yield(.cluster($0)) }
             .store(in: &spircSubscriptions)
-
-        spirc.commands
-            .sink { [eventSink] in eventSink.yield(.command($0)) }
-            .store(in: &spircSubscriptions)
-    }
-
-    // MARK: - Direct Access
-
-    /// Forwards locally-produced playback state to Spirc so other devices see it.
-    func reportLocalPlayerState(_ state: SpircController.SpircPlayerState?, active: Bool) async {
-        await spircController?.updateLocalPlayerState(state, active: active)
-    }
-
-    /// Forwards the logical volume to Spirc, which reports it on this device.
-    func reportLocalVolume(_ volume: UInt32) async {
-        await spircController?.updateVolume(volume)
-    }
-
-    /// Tells Spirc whether this device still holds playback.
-    func reportLocalActive(_ active: Bool) async {
-        await spircController?.setActive(active)
-    }
-
-    /// Tells Spirc that playback stopped here, and where; see `SpircController.release(stopped:)`.
-    func releaseLocalPlayback(stopped: SpircController.SpircPlayerState?) async {
-        await spircController?.release(stopped: stopped)
     }
 }

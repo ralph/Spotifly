@@ -45,26 +45,12 @@ struct AccountTypeTests {
         let controller = SpircController(
             deviceInfo: DeviceInfo(deviceId: deviceId, deviceName: "Spotifly", supportsPlayback: false),
             dealerConnection: DealerConnection(endpoint: "127.0.0.1:1", credentials: spotifyCredentials(), spclientHost: "", deviceId: deviceId),
-            volume: 65535 / 2,
         )
         let device = await controller.buildDevice().deviceInfo
 
         #expect(!device.canPlay)
         #expect(!device.capabilities.canBePlayer)
         #expect(device.capabilities.hidden)
-    }
-
-    /// Spotify Connect showed every new session at half, whatever the slider said (2026-10-03:
-    /// saved at 61%, listed at 50% until this Mac played).
-    @Test func `a Mac registers at the volume it is given`() async {
-        let deviceId = "spotifly_test"
-        let controller = SpircController(
-            deviceInfo: DeviceInfo(deviceId: deviceId, deviceName: "Spotifly", supportsPlayback: true),
-            dealerConnection: DealerConnection(endpoint: "127.0.0.1:1", credentials: spotifyCredentials(), spclientHost: "", deviceId: deviceId),
-            volume: 39710,
-        )
-
-        #expect(await controller.buildDevice().deviceInfo.volume == 39710)
     }
 }
 

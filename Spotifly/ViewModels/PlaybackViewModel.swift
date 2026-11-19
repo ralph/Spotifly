@@ -59,7 +59,7 @@ final class PlaybackViewModel {
         /// `clampedToTrack` and `positionAnchor(forPosition:takenAt:)` rely on it.
         var durationMs: UInt32
         var shuffle: Bool
-        var repeatMode: PlaybackQueue.RepeatMode
+        var repeatMode: RepeatMode
         /// See `PlaybackState.canSkipNext`.
         var canSkipNext: Bool
         /// See `PlaybackState.canShuffle`.
@@ -178,7 +178,7 @@ final class PlaybackViewModel {
         shown?.shuffle ?? false
     }
 
-    var repeatMode: PlaybackQueue.RepeatMode {
+    var repeatMode: RepeatMode {
         shown?.repeatMode ?? .off
     }
 
@@ -487,9 +487,8 @@ final class PlaybackViewModel {
     }
 
     /// Plays a context shuffled, as the pages' Zufällig buttons do: shuffle on, then the context
-    /// from a random one of `trackUris`. `PlaybackQueue.setContext` keeps shuffle across a new
-    /// context and shuffles around the starting row, so the two commands end the same in either
-    /// order, here and on another device.
+    /// from a random one of `trackUris`. A device keeps shuffle across a new context, so the two
+    /// commands end the same in either order.
     func playShuffled(uriOrUrl: String, trackUris: [String]) async {
         guard let index = trackUris.indices.randomElement() else { return }
         await play(uriOrUrl: uriOrUrl, trackIndex: index, startingAtUri: trackUris[index])
@@ -1181,8 +1180,8 @@ final class PlaybackViewModel {
 
     // MARK: - Player State
 
-    /// Follows the connection, the playback state and the interruptions in the player model.
-    /// Each observation gives the value as it stands, then every change, on the main actor.
+    /// Follows the connection and the playback state in the player model. Each observation
+    /// gives the value as it stands, then every change, on the main actor.
     ///
     /// The playback state is the cluster's, mirrored from whichever device plays, Soloist
     /// included: a pause from a phone arrives here exactly as one sent from this Mac.
@@ -1195,13 +1194,6 @@ final class PlaybackViewModel {
         Task { [weak self, player] in
             for await state in Observations({ player.playback }) {
                 self?.handlePlaybackStateUpdate(state)
-            }
-        }
-        Task { [weak self, player] in
-            for await interruption in Observations({ player.interruption }) {
-                if let interruption {
-                    self?.errorMessage = interruption.message
-                }
             }
         }
     }
