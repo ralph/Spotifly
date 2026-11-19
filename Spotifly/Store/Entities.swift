@@ -345,7 +345,6 @@ nonisolated struct Device: Identifiable, Hashable, Encodable {
     let name: String
     let type: String
     let isActive: Bool
-    let isPrivateSession: Bool
     let isRestricted: Bool
     let volumePercent: Int?
 
