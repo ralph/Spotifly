@@ -217,10 +217,9 @@ final class AuthViewModel {
     /// `isInitialized` true, since the connection subscription deliberately does not clear it
     /// on a disconnect, so the app would keep aiming plays at a session that no longer exists.
     ///
-    /// Only then are the credentials removed — the session's, the keymaster tokens in the
+    /// Only then are the credentials removed — the session's, and the keymaster tokens in the
     /// keychain, which would otherwise let the next launch connect the account that just logged
-    /// out, and the accesspoint login an earlier version stored there. After the teardown, so
-    /// no live session can use them again.
+    /// out. After the teardown, so no live session can use them again.
     func logout() async {
         // Invalidates any streaming grant still deciding, so it cannot resume into the
         // session this is tearing down.

@@ -86,10 +86,12 @@ struct SpotiflyApp: App {
 
     init() {
         // Before anything reads what the first launch outside the App Sandbox finds in the old
-        // container. `auth` is built after it for that reason. Not when hosting the tests,
-        // which must not move the developer's data.
+        // container. `auth` is built after it for that reason. The keychain copy of the
+        // built-in player's stored login goes with it, once. Not when hosting the tests,
+        // which must not move or delete the developer's data.
         if !Self.hostsUnitTests {
             ContainerMigration.runOnce()
+            KeychainManager.clearStoredLoginOnce()
         }
         _auth = State(initialValue: Self.hostsUnitTests ? nil : AuthViewModel())
 

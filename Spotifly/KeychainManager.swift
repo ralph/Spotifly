@@ -63,11 +63,17 @@ nonisolated enum KeychainManager {
     private static let storedLoginService = "com.spotifly.librespot"
     private static let storedLoginKey = "stored_login"
 
+    /// Set once the stored login has been deleted, so the launch after does not ask again.
+    static let storedLoginClearedKey = "clearedStoredLogin"
+
     /// Deletes the reusable accesspoint login the built-in player kept, which nothing reads
-    /// since Soloist became the only player. A logout still runs it, so a Mac that stored one
-    /// does not keep it, a live credential for the account, after signing out.
-    static func clearStoredLogin() {
+    /// since Soloist became the only player, and which is a live credential for the account.
+    /// Once, at launch (`SpotiflyApp.init`), beside `ContainerMigration`, which deletes the file
+    /// an older version kept it in: nothing writes it any more, so once is enough.
+    static func clearStoredLoginOnce(defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: storedLoginClearedKey) else { return }
         delete(key: storedLoginKey, service: storedLoginService)
+        defaults.set(true, forKey: storedLoginClearedKey)
     }
 
     // MARK: - Soloist key

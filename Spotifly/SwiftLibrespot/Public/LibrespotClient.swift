@@ -191,11 +191,9 @@ public actor LibrespotClient {
 
     // MARK: - Credential Management
 
-    /// Forgets the account's credentials, so nothing can sign back in: the session's, which a
-    /// recovery reconnects with, and the reusable accesspoint login an earlier version kept in
-    /// the keychain, which nothing reads any more and a logout still removes.
+    /// Forgets the account's credentials, the session's, which a recovery reconnects with, so
+    /// nothing can sign back in.
     public func clearStreamingCredentials() async {
-        KeychainManager.clearStoredLogin()
         lifecycleGeneration += 1
         await session?.forgetCredentials()
     }
