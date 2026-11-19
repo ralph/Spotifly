@@ -39,9 +39,9 @@ struct SoloistBuildTests {
         #expect(!build.isUsable(at: built.addingTimeInterval(90 * day)))
     }
 
-    @Test func `a binary not signed by Spotify is not run`() {
-        #expect(!SoloistInstaller.isSpotifys(URL(filePath: "/bin/ls")))
-        #expect(!SoloistInstaller.isSpotifys(URL(filePath: "/nonexistent/soloist")))
+    @Test func `a binary not signed by Spotify is not run`() async {
+        #expect(await !SoloistInstaller.isSpotifys(URL(filePath: "/bin/ls")))
+        #expect(await !SoloistInstaller.isSpotifys(URL(filePath: "/nonexistent/soloist")))
     }
 }
 

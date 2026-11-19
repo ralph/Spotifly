@@ -94,7 +94,7 @@ nonisolated enum SoloistInstaller {
         }
         let executable = stage.appending(path: "soloist")
         let type = try? FileManager.default.attributesOfItem(atPath: executable.path)[.type] as? FileAttributeType
-        guard type == .typeRegular, isSpotifys(executable) else {
+        guard type == .typeRegular, await isSpotifys(executable) else {
             throw Failure.notSpotifys
         }
 
@@ -126,8 +126,10 @@ nonisolated enum SoloistInstaller {
         return SoloistBuild(version: String(words[1]), built: Date(timeIntervalSince1970: seconds))
     }
 
-    /// Whether `executable` is signed by Spotify as Soloist, and intact.
-    static func isSpotifys(_ executable: URL) -> Bool {
+    /// Whether `executable` is signed by Spotify as Soloist, and intact. Off the main thread:
+    /// hashing the 26 MB binary takes 50–80 ms, and it runs at every launch.
+    @concurrent
+    static func isSpotifys(_ executable: URL) async -> Bool {
         var code: SecStaticCode?
         var required: SecRequirement?
         guard SecStaticCodeCreateWithPath(executable as CFURL, [], &code) == errSecSuccess, let code,

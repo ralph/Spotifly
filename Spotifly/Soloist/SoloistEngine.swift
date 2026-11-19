@@ -124,7 +124,7 @@ final class SoloistEngine {
             try Self.makePrivateDirectories()
             let build = try await currentBuild()
             let executable = SoloistInstaller.executable(of: build, in: Self.root)
-            guard SoloistInstaller.isSpotifys(executable) else {
+            guard await SoloistInstaller.isSpotifys(executable) else {
                 throw SoloistInstaller.Failure.notSpotifys
             }
             status = .starting
