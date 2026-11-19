@@ -44,7 +44,6 @@ struct AccountTypeTests {
         let deviceId = "spotifly_test"
         let controller = SpircController(
             deviceInfo: DeviceInfo(deviceId: deviceId, deviceName: "Spotifly", supportsPlayback: false),
-            accesspoint: Accesspoint(endpoint: "127.0.0.1:1"),
             dealerConnection: DealerConnection(endpoint: "127.0.0.1:1", credentials: spotifyCredentials(), spclientHost: "", deviceId: deviceId),
             volume: 65535 / 2,
         )
@@ -61,7 +60,6 @@ struct AccountTypeTests {
         let deviceId = "spotifly_test"
         let controller = SpircController(
             deviceInfo: DeviceInfo(deviceId: deviceId, deviceName: "Spotifly", supportsPlayback: true),
-            accesspoint: Accesspoint(endpoint: "127.0.0.1:1"),
             dealerConnection: DealerConnection(endpoint: "127.0.0.1:1", credentials: spotifyCredentials(), spclientHost: "", deviceId: deviceId),
             volume: 39710,
         )

@@ -22,7 +22,8 @@ public nonisolated enum SessionState: Sendable, Equatable {
 ///
 /// Owns the three long-lived pieces of a session — accesspoint TCP (Shannon),
 /// dealer WebSocket, and the Spirc controller — and forwards their events.
-/// Reconnection rebuilds all three from the same credentials.
+/// Reconnection rebuilds all three from the same credentials. A session whose
+/// device does not play here has no accesspoint (`connect`).
 public actor LibrespotSession {
     // MARK: - Properties
 
@@ -84,12 +85,19 @@ public actor LibrespotSession {
     /// whose reusable credentials are worth persisting. The dealer's requests
     /// are signed with `httpCredentials`, and this Mac registers on Spotify
     /// Connect at `volume`, the logical one (0…65535).
+    ///
+    /// A session whose device does not play here, as while Spotify's Soloist
+    /// plays for this Mac, connects no accesspoint and returns no welcome.
+    /// The accesspoint is the built-in player's channel: its login, the
+    /// account type that decides whether this Mac may stream, and the audio
+    /// keys. The dealer and Spirc need only the token, so such a session
+    /// also works for an account the accesspoint refuses for want of Premium.
     @discardableResult
     func connect(
         credentials: APCredentials,
         signing httpCredentials: SpotifyCredentials,
         volume: UInt32,
-    ) async throws -> APWelcome {
+    ) async throws -> APWelcome? {
         self.credentials = credentials
 
         updateState(.connecting)
@@ -100,7 +108,7 @@ public actor LibrespotSession {
             apResolver = APResolver()
             async let resolveTask = apResolver!.resolve()
 
-            let dh = try? DiffieHellman()
+            let dh = deviceInfo.supportsPlayback ? try? DiffieHellman() : nil
             resolvedEndpoints = try await resolveTask
 
             guard let dealerHost = resolvedEndpoints?.dealers.first else {
@@ -109,35 +117,9 @@ public actor LibrespotSession {
 
             updateState(.authenticating)
 
-            // Rotate through the resolved accesspoints: servers drop
-            // handshakes they dislike (rate limits, transient resets), and
-            // the next one usually answers.
-            var welcome: APWelcome?
-            var lastError: Error = LibrespotError.connectionFailed("No accesspoints available")
-            for apEndpoint in resolvedEndpoints?.accesspoints.prefix(4) ?? [] {
-                let candidate = Accesspoint(endpoint: apEndpoint, preGeneratedDH: dh)
-                do {
-                    welcome = try await candidate.connect(credentials: credentials, deviceId: deviceInfo.deviceId)
-                    accesspoint = candidate
-                    break
-                } catch {
-                    debugLog("LibrespotSession", "AP \(apEndpoint) failed: \(error.localizedDescription)")
-                    lastError = error
-                    await candidate.disconnect()
-                }
-            }
-            guard let welcome else { throw lastError }
+            let welcome = deviceInfo.supportsPlayback ? try await connectAccesspoint(credentials: credentials, dh: dh) : nil
             // The account type is waited for from here, alongside the dealer's connect.
             let accountTypeDeadline = ContinuousClock.now + .seconds(2)
-
-            // A dead socket must surface as a failed session, which is what
-            // arms the client's auto-recovery; without this the receive loop
-            // would exit silently and the UI would keep routing commands into
-            // a corpse.
-            await accesspoint!.setCloseHandler { [weak self] in
-                guard let self else { return }
-                Task { await self.handleTransportLost() }
-            }
 
             guard let spclientHost = resolvedEndpoints?.spclients.first else {
                 throw LibrespotError.connectionFailed("No spclient hosts available")
@@ -160,14 +142,15 @@ public actor LibrespotSession {
             }
 
             // Read before registering: this Mac is offered as a speaker only for an account
-            // that may stream here.
-            streams = await Self.streams(accountType: accesspoint!.accountType(waitingUntil: accountTypeDeadline))
+            // that may stream here. Without an accesspoint nothing plays here to ask about.
+            if let accesspoint {
+                streams = await Self.streams(accountType: accesspoint.accountType(waitingUntil: accountTypeDeadline))
+            }
             var device = deviceInfo
             device.supportsPlayback = deviceInfo.supportsPlayback && streams
 
             spircController = SpircController(
                 deviceInfo: device,
-                accesspoint: accesspoint!,
                 dealerConnection: dealerConnection!,
                 volume: volume,
             )
@@ -180,6 +163,32 @@ public actor LibrespotSession {
             updateState(.failed(error.localizedDescription))
             throw error
         }
+    }
+
+    /// Logs in on the first of the resolved accesspoints that answers: servers drop
+    /// handshakes they dislike (rate limits, transient resets), and the next one usually does.
+    private func connectAccesspoint(credentials: APCredentials, dh: DiffieHellman?) async throws -> APWelcome {
+        var lastError: Error = LibrespotError.connectionFailed("No accesspoints available")
+        for apEndpoint in resolvedEndpoints?.accesspoints.prefix(4) ?? [] {
+            let candidate = Accesspoint(endpoint: apEndpoint, preGeneratedDH: dh)
+            do {
+                let welcome = try await candidate.connect(credentials: credentials, deviceId: deviceInfo.deviceId)
+                accesspoint = candidate
+                // A dead socket must surface as a failed session, which is what arms the
+                // client's auto-recovery; without this the receive loop would exit silently
+                // and the UI would keep routing commands into a corpse.
+                await candidate.setCloseHandler { [weak self] in
+                    guard let self else { return }
+                    Task { await self.handleTransportLost() }
+                }
+                return welcome
+            } catch {
+                debugLog("LibrespotSession", "AP \(apEndpoint) failed: \(error.localizedDescription)")
+                lastError = error
+                await candidate.disconnect()
+            }
+        }
+        throw lastError
     }
 
     /// Disconnects everything but remembers the credentials, so the client's

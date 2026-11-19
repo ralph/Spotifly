@@ -44,8 +44,8 @@ public actor LibrespotClient {
     private var contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])?
 
     /// Whether this session plays here. Not while Spotify's Soloist plays for this Mac: the
-    /// session then only watches and commands, and its device registers hidden, as one that
-    /// cannot play does.
+    /// session then only watches and commands, its device registers hidden, as one that
+    /// cannot play does, and it connects no accesspoint (`LibrespotSession.connect`).
     private var playsHere = true
 
     /// Whether this Mac may play for the account, as the last login found.
@@ -180,7 +180,7 @@ public actor LibrespotClient {
         session = newSession
         subscribeToSession(newSession)
 
-        let welcome: APWelcome
+        let welcome: APWelcome?
         do {
             welcome = try await newSession.connect(credentials: credentials, signing: httpCredentials, volume: logicalVolume)
         } catch LibrespotError.premiumRequired {
@@ -205,8 +205,9 @@ public actor LibrespotClient {
         }
 
         // First successful login (or a refresh of it): capture the reusable
-        // blob so future launches skip the browser entirely.
-        if credentials.accessToken != nil {
+        // blob so future launches skip the browser entirely. A session that does
+        // not play here logs in on no accesspoint, so it has none to capture.
+        if credentials.accessToken != nil, let welcome {
             storedCredentials.save(StoredLogin(
                 username: welcome.canonicalUsername,
                 authData: welcome.reusableAuthCredentials,
