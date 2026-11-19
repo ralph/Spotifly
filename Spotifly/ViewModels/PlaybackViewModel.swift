@@ -445,10 +445,6 @@ final class PlaybackViewModel {
         await start(.play(uri: uri, trackIndex: trackIndex, trackUri: startingAtUri))
     }
 
-    func playTrack(trackId: String) async {
-        await play(uri: "spotify:track:\(trackId)")
-    }
-
     /// Plays a context shuffled, as the pages' Zufällig buttons do: shuffle on, then the context
     /// from a random one of `trackUris`. A device keeps shuffle across a new context, so the two
     /// commands end the same in either order.
