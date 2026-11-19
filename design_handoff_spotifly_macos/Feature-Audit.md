@@ -1,5 +1,10 @@
 # Spotifly — Feature- & Control-Audit
 
+> **Historical.** This is design input from before Soloist. The visual design still applies.
+> The architecture and feature notes do not: Spotifly no longer uses the Web API, Spotify's
+> Soloist plays instead of librespot, and there is no AirPlay picker and no quality setting.
+> `DEVELOPMENT.md` describes the app as it is.
+
 Stand: 7. Okt. 2026. Geprüft gegen die aktuelle Spotify Web API (inkl. Dev-Mode-Änderungen Feb. 2026), nicht gegen open.spotify.com im Browser.
 
 ## Entfernt (nicht verfügbar)
