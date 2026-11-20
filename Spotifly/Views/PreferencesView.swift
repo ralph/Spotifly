@@ -82,8 +82,9 @@ private struct PlaybackSettingsView: View {
 }
 
 /// Spotify's Soloist as this Mac's player: the key, the download, and where it stands
-/// (`SoloistEngine`). Once set up, the key shows as saved, never as itself, and Change opens
-/// the field again: a new key restarts Soloist with it.
+/// (`SoloistEngine`), with the build it runs and how long that has left. Once set up, the key
+/// shows as saved, never as itself, and Change opens the field again: a new key restarts
+/// Soloist with it.
 private struct SoloistSection: View {
     @AppStorage(SoloistEngine.setUpKey) private var isSetUp = false
     @State private var key = ""
@@ -126,12 +127,48 @@ private struct SoloistSection: View {
                     .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            if isSetUp, let build = engine.build {
+                LabeledContent("soloist.version") {
+                    HStack {
+                        if engine.isReinstalling {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(verbatim: build.version)
+                            .foregroundStyle(.secondary)
+                        Button("soloist.reinstall") {
+                            Task { await engine.reinstall() }
+                        }
+                        .disabled(engine.isReinstalling || engine.status == .installing || engine.status == .starting)
+                    }
+                }
+                if let reinstallError = engine.reinstallError {
+                    Text(verbatim: reinstallError)
+                        .foregroundStyle(.red)
+                }
+                LabeledContent("soloist.validity") {
+                    Text("soloist.validity_value \(Self.daysLeft(until: build.expires)) \(build.expires.formatted(date: .abbreviated, time: .omitted))")
+                        .foregroundStyle(.secondary)
+                }
+            }
         } header: {
             Text(verbatim: "Spotify Soloist")
         } footer: {
             Text("soloist.footer")
         }
     }
+
+    /// "89 days": a build runs for 90 days, and Spotifly renews it in its last 30.
+    private static func daysLeft(until expiry: Date) -> String {
+        dayFormatter.string(from: Date(), to: max(expiry, Date())) ?? ""
+    }
+
+    private static let dayFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.day]
+        formatter.unitsStyle = .full
+        return formatter
+    }()
 
     /// The field shows until a key is set up, while the user changes it, and while Soloist has
     /// failed, since its errors ask for the key again.
