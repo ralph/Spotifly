@@ -39,6 +39,13 @@ final class SoloistEngine {
     /// Soloist's Connect device id, which the cluster lists it by.
     private(set) var deviceId: String?
 
+    /// The build that runs, or ran last: its version and when it expires.
+    private(set) var build = SoloistInstaller.current(in: SoloistEngine.root)
+
+    /// While `reinstall()` downloads, and why its last download failed.
+    private(set) var isReinstalling = false
+    private(set) var reinstallError: String?
+
     /// The name the account's device lists show for this Mac.
     static let deviceName = "Spotifly"
 
@@ -113,6 +120,7 @@ final class SoloistEngine {
         do {
             try Self.makePrivateDirectories()
             let build = try await currentBuild()
+            self.build = build
             let executable = SoloistInstaller.executable(of: build, in: Self.root)
             guard await SoloistInstaller.isSpotifys(executable) else {
                 throw SoloistInstaller.Failure.notSpotifys
@@ -196,7 +204,8 @@ final class SoloistEngine {
         socket = nil
 
         if exitStatus == 10 {
-            try? FileManager.default.removeItem(at: Self.root.appending(path: "build.json"))
+            SoloistInstaller.forget(in: Self.root)
+            build = nil
         }
         restartsInARow += 1
         guard restartsInARow <= 5 else {
@@ -211,8 +220,9 @@ final class SoloistEngine {
     }
 
     /// Stops the child: on quit (`AppDelegate`), on logout (`forgetLogin`), when the user enters
-    /// a key, and when a start fails. A moment to leave Spotify Connect cleanly, then it goes regardless. A crash
-    /// of the app leaves it running, and the next start stops it (`stopLeftoverChild`).
+    /// a key, and when a start fails. A moment to leave Spotify Connect cleanly, then it goes
+    /// regardless. A crash of the app leaves it running, and the next start stops it
+    /// (`stopLeftoverChild`).
     func stop() async {
         socket?.cancel()
         socket = nil
@@ -238,6 +248,27 @@ final class SoloistEngine {
         deviceId = nil
         restartsInARow = 0
         status = .off
+    }
+
+    /// Downloads the current build again and restarts Soloist with it, deleting every other
+    /// build: for a build that misbehaves, or to renew before Spotifly would on its own. The
+    /// download comes first, so a failed one leaves the running build as it was.
+    func reinstall() async {
+        guard !isReinstalling else { return }
+        isReinstalling = true
+        defer { isReinstalling = false }
+        reinstallError = nil
+        do {
+            let fresh = try await SoloistInstaller.install(into: Self.root)
+            await stop()
+            SoloistInstaller.removeBuilds(in: Self.root, except: fresh)
+            build = fresh
+            restartsInARow = 0
+            await start()
+        } catch {
+            debugLog("Soloist", "Download again failed: \(error)")
+            reinstallError = error.localizedDescription
+        }
     }
 
     /// A child left over from a run of the app that did not stop it: Soloist refuses to share

@@ -334,6 +334,10 @@
 "soloist.change_key" = "Use This Key";
 "soloist.key_saved" = "Saved";
 "soloist.edit_key" = "Change…";
+"soloist.version" = "Version";
+"soloist.reinstall" = "Download Again";
+"soloist.validity" = "Valid";
+"soloist.validity_value %@ %@" = "%1$@ left, until %2$@";
 "speakers.set_up_soloist" = "Set Up Soloist to Play on This Mac";
 "soloist.error.download %lld" = "Spotify's download server answered %lld.";
 "soloist.error.unpack" = "Soloist could not be unpacked or started.";
