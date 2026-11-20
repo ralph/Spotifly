@@ -68,8 +68,26 @@ nonisolated enum SoloistInstaller {
 
     /// The build installed last, if it is recorded.
     static func current(in root: URL) -> SoloistBuild? {
-        guard let data = try? Data(contentsOf: root.appending(path: "build.json")) else { return nil }
+        guard let data = try? Data(contentsOf: record(in: root)) else { return nil }
         return try? JSONDecoder().decode(SoloistBuild.self, from: data)
+    }
+
+    /// Forgets the recorded build, so the next start downloads one: for a build that expired.
+    static func forget(in root: URL) {
+        try? FileManager.default.removeItem(at: record(in: root))
+    }
+
+    /// Deletes every build but `build`, the downloads older versions leave behind.
+    static func removeBuilds(in root: URL, except build: SoloistBuild) {
+        let builds = root.appending(path: "builds")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: builds.path)) ?? []
+        for name in names where name != build.version {
+            try? FileManager.default.removeItem(at: builds.appending(path: name))
+        }
+    }
+
+    private static func record(in root: URL) -> URL {
+        root.appending(path: "build.json")
     }
 
     /// Downloads the current build into `root/builds/<version>`, checks it, and records it.
@@ -106,11 +124,11 @@ nonisolated enum SoloistInstaller {
             throw Failure.expired
         }
 
+        // A build of the same version is replaced: a download asked for again replaces its files.
         let destination = builds.appending(path: build.version)
-        if !FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.moveItem(at: stage, to: destination)
-        }
-        try JSONEncoder().encode(build).write(to: root.appending(path: "build.json"), options: .atomic)
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: stage, to: destination)
+        try JSONEncoder().encode(build).write(to: record(in: root), options: .atomic)
         debugLog("Soloist", "Installed \(build.version), expires \(build.expires)")
         return build
     }

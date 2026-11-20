@@ -332,6 +332,12 @@
 "soloist.set_up_message" = "Ce Mac lit via Soloist de Spotify, à configurer une fois dans les Réglages. D'ici là, lancez la lecture sur un autre appareil.";
 "soloist.open_settings" = "Ouvrir les Réglages";
 "soloist.change_key" = "Utiliser cette clé";
+"soloist.key_saved" = "Enregistrée";
+"soloist.edit_key" = "Modifier…";
+"soloist.version" = "Version";
+"soloist.reinstall" = "Retélécharger";
+"soloist.validity" = "Validité";
+"soloist.validity_value %@ %@" = "encore %1$@, jusqu’au %2$@";
 "speakers.set_up_soloist" = "Configurer Soloist pour lire sur ce Mac";
 "soloist.error.download %lld" = "Le serveur de téléchargement de Spotify a répondu %lld.";
 "soloist.error.unpack" = "Soloist n'a pas pu être décompressé ni lancé.";
