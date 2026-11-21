@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-11-19
+## [2.0.0] - 2026-11-21
 
 ### Added
 - **Spotify Soloist can be this Mac's player.** Settings → Playback takes a key from Spotify's Soloist dashboard, downloads Soloist from Spotify's CDN, and starts it; picking "Spotifly" once in the Spotify app on a phone pairs it. Soloist plays with Spotify's own engine, so the audio keys the built-in player is refused for some accounts (#223) are not needed. Spotifly runs it as a child process with a private data folder, checks that the download is signed by Spotify before every start, renews it in the last 30 of its 90 days, restarts it if it stops, and stops it on quit (`SoloistEngine`, `SoloistInstaller`). Every play, from a row, a list or song radio (as the track's station), goes to Soloist over connect-state, and pause, skips, seek, volume and the queue go there as they go to any other Connect device; what it plays comes back in the cluster. Spotifly's own Connect device then registers hidden, as it does for an account that cannot stream, and hidden devices are left out of Speakers, so the account lists one "Spotifly", which Speakers calls This Mac. Soloist plays to the Mac's sound output. Plan: `plans/done/soloist-playback.md`.
