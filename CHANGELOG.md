@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Space plays and pauses again while a segmented picker is on screen.** Home's time range, the artist page's discography and the search scope took the keyboard focus, and a focused picker takes Space for itself, so Play/Pause never got it. They are no longer focusable (`.focusable(false)`); a click still switches them.
+
 ## [2.0.0] - 2026-11-21
 
 ### Added

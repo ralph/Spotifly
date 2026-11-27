@@ -56,6 +56,8 @@ struct SearchResultsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                // Never focused: a focused picker takes the space bar, which plays and pauses.
+                .focusable(false)
                 .labelsHidden()
                 .fixedSize()
                 .padding(.horizontal, 28)
